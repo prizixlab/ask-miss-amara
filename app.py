@@ -210,23 +210,41 @@ def signup():
 @app.route("/app")
 def app_view():
     gate = _ensure_login()
-    if gate: return gate
+    if gate:
+        return gate
+
     uid = session["user_id"]
+
     with ENGINE.begin() as cx:
-        rows = cx.execute(text("""
-            SELECT q.id as qid, q.content as q, a.body as a, a.affirmation as aff, a.tags_csv as tags, q.created_at as created
-            FROM questions q LEFT JOIN answers a ON a.question_id=q.id
-            WHERE q.user_id=:u ORDER BY q.created_at DESC LIMIT 20
-        """), {"u":uid}).mappings().all()
-        last = cx.execute(text("SELECT created_at FROM questions WHERE user_id=:u ORDER BY created_at DESC LIMIT 1"),
-                          {"u":uid}).scalar()
-    allowed, remaining = True, 0
-    if last:
-        delta = _now_utc() - last
-        if delta < timedelta(hours=24):
-            allowed = False
-            remaining = round((timedelta(hours=24)-delta).total_seconds()/3600,1)
-    return render_template("app.html", entries=rows, allowed=allowed, remaining_hours=remaining, email=session.get("email"))
+        sql_rows = r"""
+        SELECT
+            q.id            AS qid,
+            q.content       AS q,
+            COALESCE(a.body,'')        AS a,
+            COALESCE(a.affirmation,'') AS aff,
+            COALESCE(a.tags_csv,'')    AS tags,
+            q.created_at    AS created
+        FROM questions q
+        LEFT JOIN answers a ON a.question_id = q.id
+        WHERE q.user_id = :u
+        ORDER BY q.created_at DESC
+        LIMIT 20
+        """         
+        rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
+
+        sql_last = r"""
+        SELECT created_at
+        FROM questions
+        WHERE user_id = :u
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+        last = cx.execute(text(sql_last), {"u": uid}).scalar()
+
+    
+
+    return render_template("app.html", rows=rows, last=last)
+
 
 @app.route("/ask", methods=["POST"])
 def ask():
