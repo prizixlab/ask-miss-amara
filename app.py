@@ -421,7 +421,62 @@ def tracker_add():
     with ENGINE.begin() as cx:
         cx.execute(text("INSERT INTO cards(id,user_id,card_name,notes) VALUES (:id,:u,:n,:t)"),
                    {"id":str(uuid.uuid4()),"u":uid,"n":name,"t":notes})
-    return redirect(url_for("tracker_view"))
+    return redirect(url_for("tracker_view")) # === TAROT & RUNES: image drawing logic ===
+import os, random, hashlib, datetime  # (ignore if already imported)
+
+def list_images(folder):
+    """
+    Return image filenames located under static/<folder>.
+    Example: folder="tarot" -> static/tarot/*.jpg
+    """
+    path = os.path.join(app.static_folder, folder)
+    exts = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+    if not os.path.isdir(path):
+        return []
+    return sorted([f for f in os.listdir(path) if f.lower().endswith(exts)])
+
+def pick_random(folder):
+    files = list_images(folder)
+    return random.choice(files) if files else None
+
+def pick_daily(folder, seed_text):
+    """
+    Deterministic pick (e.g., 'card of the day'):
+    same selection for the same seed_text for all users.
+    """
+    files = list_images(folder)
+    if not files:
+        return None
+    seed = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+    idx = int(seed, 16) % len(files)
+    return files[idx]
+
+@app.get("/draw/<kind>")   # /draw/tarot or /draw/runes
+def draw_kind(kind):
+    if kind not in ("tarot", "runes"):
+        return "Unknown kind", 404
+    fn = pick_random(kind)
+    img_url = url_for("static", filename=f"{kind}/{fn}") if fn else None
+    return render_template("draw.html", kind=kind, image_url=img_url)
+
+@app.get("/daily/<kind>")  # /daily/tarot or /daily/runes
+def daily_kind(kind):
+    if kind not in ("tarot", "runes"):
+        return "Unknown kind", 404
+    today = datetime.date.today().isoformat()  # keeps same pick all day
+    fn = pick_daily(kind, f"{kind}-{today}")
+    img_url = url_for("static", filename=f"{kind}/{fn}") if fn else None
+    return render_template("daily.html", kind=kind, image_url=img_url)
+
+# Optional: simple JSON API if you want to redraw via JS without reload
+@app.get("/api/draw/<kind>")
+def api_draw(kind):
+    if kind not in ("tarot", "runes"):
+        return jsonify({"error": "Unknown kind"}), 400
+    fn = pick_random(kind)
+    return jsonify({"file": fn, "url": url_for("static", filename=f"{kind}/{fn}")})
+# === END TAROT & RUNES ===
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
