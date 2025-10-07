@@ -200,19 +200,17 @@ def signup():
     if not email or "@" not in email:
         return redirect(url_for("index"))
     uid = str(uuid.uuid4())
-    with ENGINE.begin() as cx:
-        result = cx.execute(text("""
-            INSERT INTO users(id, email) VALUES (:id, :e)
-            ON CONFLICT (email) DO NOTHING
-            RETURNING id
-        """), {"id":uid, "e":email}).scalar()
-        if result is None:
-            uid = cx.execute(text("SELECT id FROM users WHERE email=:e"), {"e":email}).scalar()
-        else:
-            uid = result
-    if uid is None:
-        return redirect(url_for("index"))
-    session["user_id"] = uid
+    # with ENGINE.begin() as cx:
+#     result = cx.execute(text("""
+#         INSERT INTO users(id, email) VALUES (:id, :e)
+#         ON CONFLICT (email) DO NOTHING
+#         RETURNING id
+#     """), {"id": uid, "e": email}).scalar()
+#     if result is None:
+#         uid = cx.execute(text("SELECT id FROM users WHERE email=:e"), {"e": email}).scalar()
+#     else:
+#         uid = result
+
     session["email"] = email
     return redirect(url_for("app_view"))
 
