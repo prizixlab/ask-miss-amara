@@ -24,6 +24,25 @@
     <a class="btn" href="/draw/{{ kind }}" style="display:inline-block;padding:10px 20px;background:#eee;border-radius:8px;text-decoration:none;margin:10px;">Draw Again</a>
   </div>
 </section>
+<form id="ask-form" action="/ask/{{ kind }}" method="post" style="margin-top:16px;">
+  <input name="question" placeholder="Ask a question for this {{ kind }}…" style="width:70%;padding:10px;border-radius:8px;border:1px solid #ddd;">
+  <button type="submit" style="padding:10px 16px;border-radius:8px;margin-left:8px;">Ask Miss Amara</button>
+</form>
+
+<div id="answer" style="max-width:800px;margin:16px auto;text-align:left;line-height:1.5;"></div>
+
+<script>
+  const form = document.getElementById('ask-form');
+  const answerBox = document.getElementById('answer');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    answerBox.textContent = 'Reading…';
+    const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    const data = await res.json();
+    answerBox.textContent = data.answer || data.error || 'No response.';
+  });
+</script>
 
   
   <hr>
