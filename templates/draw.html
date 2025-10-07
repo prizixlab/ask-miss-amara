@@ -10,45 +10,22 @@
     <nav><a href="/">Home</a> · <a href="/app">Ask</a> · <a href="/daily">Aura</a> · <a href="/daily/draw">Card/Rune</a> · <a href="/moon">Moon</a> · <a href="/tracker">Tracker</a></nav>
   </header>
 
-  <section>
-    <h2>Tarot — Card of the Day</h2>
-    {% if tarot %}
-      {% if tarot_img %}<img src="{{ tarot_img }}" alt="{{ tarot.name }}" style="max-width:220px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.15)">{% endif %}
-      <article>
-        <p><b>{{ tarot.name }}</b></p>
-        <p>{{ tarot.meaning }}</p>
-        {% if tarot.keywords %}<p><small>keywords: {{ tarot.keywords }}</small></p>{% endif %}
-        {% if tarot.affirmation %}<p><em>{{ tarot.affirmation }}</em></p>{% endif %}
-      </article>
-      <form method="post" action="/daily/draw/tarot"><input name="name" placeholder="Optional: enter a card (e.g., The Empress)"><button>Regenerate</button></form>
-    {% else %}
-      <form method="post" action="/daily/draw/tarot">
-        <input name="name" placeholder="Optional: enter a card (e.g., The Empress)">
-        <button>Draw Tarot</button>
-      </form>
-    {% endif %}
-  </section>
+ 
+   <section>
+  <h2>{{ kind|title }} Draw</h2>
 
-  <hr>
-  <section>
-    <h2>Runes — Rune of the Day</h2>
-    {% if rune %}
-      {% if rune_img %}<img src="{{ rune_img }}" alt="{{ rune.name }}" style="max-width:180px;margin-top:8px">{% endif %}
-      <article>
-        <p><b>{{ rune.name }}</b></p>
-        <p>{{ rune.meaning }}</p>
-        {% if rune.keywords %}<p><small>keywords: {{ rune.keywords }}</small></p>{% endif %}
-        {% if rune.affirmation %}<p><em>{{ rune.affirmation }}</em></p>{% endif %}
-      </article>
-      <form method="post" action="/daily/draw/rune"><input name="name" placeholder="Optional: enter a rune (e.g., Fehu)"><button>Regenerate</button></form>
-    {% else %}
-      <form method="post" action="/daily/draw/rune">
-        <input name="name" placeholder="Optional: enter a rune (e.g., Fehu)">
-        <button>Draw Rune</button>
-      </form>
-    {% endif %}
-  </section>
+  {% if image_url %}
+    <img src="{{ image_url }}" alt="{{ kind }} image" style="max-width:80%;border-radius:12px;margin:20px 0;">
+  {% else %}
+    <p>No images found in static/{{ kind }}/</p>
+  {% endif %}
 
+  <div>
+    <a class="btn" href="/draw/{{ kind }}" style="display:inline-block;padding:10px 20px;background:#eee;border-radius:8px;text-decoration:none;margin:10px;">Draw Again</a>
+  </div>
+</section>
+
+  
   <hr>
   <section>
     <h3>Recent history</h3>
