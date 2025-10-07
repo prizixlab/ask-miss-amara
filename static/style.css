@@ -1,0 +1,8 @@
+:root{--cream:#f7f3ee;--lavender:#cdb4db;--ink:#2c2c2c}
+html,body{background:var(--cream);color:var(--ink)}
+a,button,.button{background:var(--lavender)!important;border:none!important;color:#222!important}
+button:hover{opacity:.92}
+article{background:#fff;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.06);padding:16px}
+nav a{margin-right:8px;padding:6px 10px;border-radius:10px;text-decoration:none;background:rgba(205,180,219,.35)}
+.draw-card,img[alt*="tarot"],img[alt*="rune"]{max-width:240px;border-radius:14px;box-shadow:0 10px 24px rgba(0,0,0,.12)}
+.amara-pic{width:160px;border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,.15);display:block;margin:10px auto}
