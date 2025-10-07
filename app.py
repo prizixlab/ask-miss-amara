@@ -199,19 +199,12 @@ def signup():
     email = (request.form.get("email") or "").strip().lower()
     if not email or "@" not in email:
         return redirect(url_for("index"))
-    uid = str(uuid.uuid4())
-    # with ENGINE.begin() as cx:
-#     result = cx.execute(text("""
-#         INSERT INTO users(id, email) VALUES (:id, :e)
-#         ON CONFLICT (email) DO NOTHING
-#         RETURNING id
-#     """), {"id": uid, "e": email}).scalar()
-#     if result is None:
-#         uid = cx.execute(text("SELECT id FROM users WHERE email=:e"), {"e": email}).scalar()
-#     else:
-#         uid = result
 
+    # For now we don’t touch the DB on signup; just create a session
+    uid = str(uuid.uuid4())
     session["email"] = email
+    session["user_id"] = uid
+
     return redirect(url_for("app_view"))
 
 @app.route("/app")
