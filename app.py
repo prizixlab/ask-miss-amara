@@ -15,14 +15,17 @@ if DATABASE_URL:
 else:
     # Fallback to local SQLite on Render’s ephemeral disk (fine for now)
     ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
+is_sqlite = ENGINE.url.get_backend_name() == "sqlite"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS users(
   id UUID PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   subscription_status TEXT DEFAULT 'free',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+  created_at TIMESTAMPTZ DEFAULT now() # Make Postgres-style DDL work on SQLite when needed
+
+); 
+
 CREATE TABLE IF NOT EXISTS questions(
   id UUID PRIMARY KEY,
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -61,31 +64,15 @@ CREATE TABLE IF NOT EXISTS cards(
   card_name TEXT NOT NULL, notes TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
-"""
-with ENGINE.begin() as cx:
-    for stmt in DDL.strip().split(";"):
-        s = stmt.strip()
-        if s: cx.execute(text(s))
-    
-    try:
-        cx.execute(text("ALTER TABLE daily_entries ADD COLUMN IF NOT EXISTS entry_date DATE NOT NULL DEFAULT CURRENT_DATE"))
-    except Exception:
-        pass
-    try:
-        cx.execute(text("ALTER TABLE daily_draws ADD COLUMN IF NOT EXISTS draw_date DATE NOT NULL DEFAULT CURRENT_DATE"))
-    except Exception:
-        pass
-    
-    try:
-        cx.execute(text("ALTER TABLE daily_entries DROP CONSTRAINT IF EXISTS daily_entries_user_id_entry_date_key"))
-        cx.execute(text("ALTER TABLE daily_entries ADD CONSTRAINT daily_entries_user_id_entry_date_key UNIQUE (user_id, entry_date)"))
-    except Exception:
-        pass
-    try:
-        cx.execute(text("ALTER TABLE daily_draws DROP CONSTRAINT IF EXISTS daily_draws_user_id_kind_draw_date_key"))
-        cx.execute(text("ALTER TABLE daily_draws ADD CONSTRAINT daily_draws_user_id_kind_draw_date_key UNIQUE (user_id, kind, draw_date)"))
-    except Exception:
-        pass
+# Make Postgres-style DDL work on SQLite when needed
+DDL_SQL = (DDL
+           .replace("UUID", "TEXT")
+           .replace("TIMESTAMPTZ DEFAULT now()", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
+
+ddl_to_run = DDL_SQL if is_sqlite else DDL
+
+with ENGINE.begin() as conn:
+    conn.execute(text(ddl_to_run))
 
 def _ensure_login():
     if "user_id" not in session:
