@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/mvp.css">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#cdb4db">
+<main>
+  <header style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Daily Draws</h1>
+    <nav><a href="/">Home</a> · <a href="/app">Ask</a> · <a href="/daily">Aura</a> · <a href="/daily/draw">Card/Rune</a> · <a href="/moon">Moon</a> · <a href="/tracker">Tracker</a></nav>
+  </header>
+
+  <section>
+    <h2>Tarot — Card of the Day</h2>
+    {% if tarot %}
+      {% if tarot_img %}<img src="{{ tarot_img }}" alt="{{ tarot.name }}" style="max-width:220px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.15)">{% endif %}
+      <article>
+        <p><b>{{ tarot.name }}</b></p>
+        <p>{{ tarot.meaning }}</p>
+        {% if tarot.keywords %}<p><small>keywords: {{ tarot.keywords }}</small></p>{% endif %}
+        {% if tarot.affirmation %}<p><em>{{ tarot.affirmation }}</em></p>{% endif %}
+      </article>
+      <form method="post" action="/daily/draw/tarot"><input name="name" placeholder="Optional: enter a card (e.g., The Empress)"><button>Regenerate</button></form>
+    {% else %}
+      <form method="post" action="/daily/draw/tarot">
+        <input name="name" placeholder="Optional: enter a card (e.g., The Empress)">
+        <button>Draw Tarot</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <hr>
+  <section>
+    <h2>Runes — Rune of the Day</h2>
+    {% if rune %}
+      {% if rune_img %}<img src="{{ rune_img }}" alt="{{ rune.name }}" style="max-width:180px;margin-top:8px">{% endif %}
+      <article>
+        <p><b>{{ rune.name }}</b></p>
+        <p>{{ rune.meaning }}</p>
+        {% if rune.keywords %}<p><small>keywords: {{ rune.keywords }}</small></p>{% endif %}
+        {% if rune.affirmation %}<p><em>{{ rune.affirmation }}</em></p>{% endif %}
+      </article>
+      <form method="post" action="/daily/draw/rune"><input name="name" placeholder="Optional: enter a rune (e.g., Fehu)"><button>Regenerate</button></form>
+    {% else %}
+      <form method="post" action="/daily/draw/rune">
+        <input name="name" placeholder="Optional: enter a rune (e.g., Fehu)">
+        <button>Draw Rune</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <hr>
+  <section>
+    <h3>Recent history</h3>
+    <details><summary>Tarot — last 10</summary>
+      {% for d in tarot_hist %}<p><b>{{ d.created_at.date() }}</b> — {{ d.name }} — <small>{{ d.keywords }}</small></p>{% endfor %}
+    </details>
+    <details><summary>Runes — last 10</summary>
+      {% for d in rune_hist %}<p><b>{{ d.created_at.date() }}</b> — {{ d.name }} — <small>{{ d.keywords }}</small></p>{% endfor %}
+    </details>
+  </section>
+</main>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}');
+}
+</script>

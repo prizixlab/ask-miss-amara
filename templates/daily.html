@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/mvp.css">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#cdb4db">
+<style>.swatch{width:84px;height:84px;border-radius:50%;border:1px solid #ddd}</style>
+<main>
+  <header style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Daily Aura</h1>
+    <nav><a href="/">Home</a> · <a href="/app">Ask</a> · <a href="/daily">Aura</a> · <a href="/daily/draw">Card/Rune</a> · <a href="/moon">Moon</a> · <a href="/tracker">Tracker</a></nav>
+  </header>
+
+  {% if entry %}
+    <article>
+      <p><b>Color:</b> {{ entry.aura_color }}</p>
+      <div class="swatch" style="background: {{ entry.aura_color|default('#cdb4db') }}"></div>
+      <p><b>Emotion:</b> {{ entry.emotion }}</p>
+      <p><b>Keywords:</b> {{ entry.keywords }}</p>
+      <p><b>Affirmation:</b> <em>{{ entry.affirmation }}</em></p>
+      <small>Saved at {{ entry.created_at }}</small>
+    </article>
+    <form method="post" action="/daily/generate"><button>Regenerate for today</button></form>
+  {% else %}
+    <p>No entry yet for today.</p>
+    <form method="post" action="/daily/generate"><button>Pull my daily aura</button></form>
+  {% endif %}
+
+  <hr><h3>Recent entries</h3>
+  {% for e in history %}
+    <details><summary>{{ e.created_at.date() }} — {{ e.aura_color }}</summary>
+      <p><b>Emotion:</b> {{ e.emotion }}</p>
+      <p><b>Keywords:</b> {{ e.keywords }}</p>
+      <p><em>{{ e.affirmation }}</em></p>
+    </details>
+  {% endfor %}
+</main>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}');
+}
+</script>

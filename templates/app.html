@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/mvp.css">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#cdb4db">
+<main>
+  <header style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Ask Miss Amara</h1>
+    <small>Signed in as {{ email }}</small>
+  </header>
+
+  <nav>
+    <a href="/">Home</a> ·
+    <a href="/app">Ask</a> ·
+    <a href="/daily">Aura</a> ·
+    <a href="/daily/draw">Card/Rune</a> ·
+    <a href="/moon">Moon</a> ·
+    <a href="/tracker">Tracker</a>
+  </nav>
+
+  <section>
+    <h2>Your Spiritual Journal</h2>
+    {% if entries|length == 0 %}
+      <p>No entries yet. Ask your first question below.</p>
+    {% else %}
+      {% for e in entries %}
+        <article>
+          <p><b>Q:</b> {{ e.q }}</p>
+          {% if e.a %}<p style="white-space:pre-wrap"><b>A:</b> {{ e.a }}</p>{% endif %}
+          {% if e.aff %}<p><i>Affirmation:</i> {{ e.aff }}</p>{% endif %}
+          {% if e.tags %}<p>tags: {{ e.tags }}</p>{% endif %}
+          <small>{{ e.created }}</small>
+        </article>
+      {% endfor %}
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Ask a question</h2>
+    {% if allowed %}
+      <textarea id="q" rows="3" placeholder="What's on your heart today?"></textarea>
+      <button id="askBtn">Ask the Oracle</button>
+      <div id="resp"></div>
+    {% else %}
+      <p>Daily limit reached. Try again in ~{{ remaining_hours }}h.</p>
+    {% endif %}
+  </section>
+</main>
+<script>
+const btn = document.getElementById('askBtn');
+if (btn) {
+  btn.onclick = async () => {
+    const q = document.getElementById('q').value.trim();
+    const r = await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
+    const d = await r.json();
+    const el = document.getElementById('resp');
+    if (!d.ok){ el.textContent = d.error || 'Something went wrong.'; return; }
+    el.innerHTML = (d.image ? `<img src="${d.image}" style="max-width:220px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.15)"><br>` : "")
+      + `<p><b>A:</b> ${d.answer}</p><p><i>Affirmation:</i> ${d.affirmation}</p><p>tags: ${d.tags}</p>`;
+    setTimeout(()=>location.reload(), 800);
+  }
+}
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}');
+}
+</script>

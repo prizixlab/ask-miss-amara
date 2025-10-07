@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/mvp.css">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#cdb4db">
+<main>
+  <h1>Ask Miss Amara 🌙</h1>
+  <p>A gentle place to ask one soul question a day.</p>
+
+  <nav>
+    <a href="/">Home</a> ·
+    <a href="/app">Ask</a> ·
+    <a href="/daily">Aura</a> ·
+    <a href="/daily/draw">Card/Rune</a> ·
+    <a href="/moon">Moon</a> ·
+    <a href="/tracker">Tracker</a>
+  </nav>
+
+  <article>
+    <p><b>Current signups:</b> {{ signup_count }}</p>
+    <form action="/signup" method="post">
+      <input type="email" name="email" placeholder="you@example.com" required>
+      <button>Join beta</button>
+    </form>
+    <small>We'll set a simple session so you can try the demo immediately.</small>
+  </article>
+</main>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('{{ url_for("static", filename="service-worker.js") }}');
+  }
+</script>
