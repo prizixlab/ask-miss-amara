@@ -8,8 +8,13 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 if not DATABASE_URL:
-    raise RuntimeError("Set DATABASE_URL env var (Render/Replit Postgres or Supabase).")
-ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
+   DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
+    ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
+else:
+    # Fallback to local SQLite on Render’s ephemeral disk (fine for now)
+    ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
 
 DDL = """
 CREATE TABLE IF NOT EXISTS users(
