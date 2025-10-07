@@ -301,16 +301,15 @@ def daily_view():
     if gate: return gate
     uid = session["user_id"]
     with ENGINE.begin() as cx:
-        today = cx.execute(text("""
-            SELECT aura_color, emotion, keywords, affirmation, created_at
-            FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE
-        """), {"u":uid}).mappings().first()
-        hist = cx.execute(text("""
-            SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date
-            FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14
-        """), {"u":uid}).mappings().all()
-    return render_template("daily.html", entry=today, history=hist)
-
+            today = cx.execute(text("""
+SELECT aura_color, emotion, keywords, affirmation, created_at
+FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE
+"""), {"u": uid}).mappings().first()
+            hist = cx.execute(text("""
+hist = cx.execute(text("""
+SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date
+FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14
+"""), {"u": uid}).mappings().all()
 @app.route("/daily/generate", methods=["POST"])
 def daily_generate():
     gate = _ensure_login()
