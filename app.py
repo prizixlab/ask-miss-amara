@@ -216,30 +216,33 @@ def app_view():
     uid = session["user_id"]
 
     with ENGINE.begin() as cx:
-        sql_rows = r"""
-        SELECT
-            q.id            AS qid,
-            q.content       AS q,
-            COALESCE(a.body,'')        AS a,
-            COALESCE(a.affirmation,'') AS aff,
-            COALESCE(a.tags_csv,'')    AS tags,
-            q.created_at    AS created
-        FROM questions q
-        LEFT JOIN answers a ON a.question_id = q.id
-        WHERE q.user_id = :u
-        ORDER BY q.created_at DESC
-        LIMIT 20
-        """         
-        rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
+    sql_rows = (
+        "SELECT "
+        "q.id AS qid, "
+        "q.content AS q, "
+        "COALESCE(a.body,'') AS a, "
+        "COALESCE(a.affirmation,'') AS aff, "
+        "COALESCE(a.tags_csv,'') AS tags, "
+        "q.created_at AS created "
+        "FROM questions q "
+        "LEFT JOIN answers a ON a.question_id = q.id "
+        "WHERE q.user_id = :u "
+        "ORDER BY q.created_at DESC "
+        "LIMIT 20"
+    )
+    rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
 
-        sql_last = r"""
-        SELECT created_at
-        FROM questions
-        WHERE user_id = :u
-        ORDER BY created_at DESC
-        LIMIT 1
-        """
-        last = cx.execute(text(sql_last), {"u": uid}).scalar()
+    sql_last = (
+        "SELECT created_at "
+        "FROM questions "
+        "WHERE user_id = :u "
+        "ORDER BY created_at DESC "
+        "LIMIT 1"
+    )
+    last = cx.execute(text(sql_last), {"u": uid}).scalar()
+
+return render_template("app.html", rows=rows, last=last)
+
 
     
 
