@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, render_template_string, request, redirect, session, jsonify, url_for
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
@@ -100,7 +101,7 @@ RUNE_FILE_MAP = {
 }
 def tarot_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+"," ",name.strip().lower())
+    key = re.sub(r"\s+", " ", name.strip().lower())
     f = TAROT_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/tarot/{f}") if f else None
 def rune_image_url(name:str|None):
@@ -111,9 +112,11 @@ def rune_image_url(name:str|None):
 
 def ai_oracle_response(question:str):
     api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return ("Today's energy suggests gentle clarity. Name two hopes and one boundary. Trust your pacing.",
-                "I am calmly guided.","clarity, pacing, trust")
+    return (
+  "Today's energy suggests gentle clarity. Name two hopes and one boundary. Trust your pacing.",
+  "I am calmly guided",
+  "clarity, pacing, trust",
+)
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
     system = ("You are Miss Amara, a compassionate tarot guide. Offer grounded, kind insights in plain language. "
@@ -266,22 +269,31 @@ def ask():
             return jsonify({"ok":False,"error":"rate_limited"}), 429
 
         qid = str(uuid.uuid4())
-        cx.execute(text("INSERT INTO questions(id,user_id,content) VALUES (:id,:u,:c)"),
-                   {"id":qid,"u":uid,"c":q})
+        body, aff, tags = ai_oracle_response(q)
+tags_csv = tags
 
-    body, aff, tags = ai_oracle_response(q)
+with ENGINE.begin() as cx:
+    aid = str(uuid.uuid4())
+    sql = (
+        "INSERT INTO answers (id, question_id, body, affirmation, tags_csv) "
+        "VALUES (:id, :question_id, :body, :affirmation, :tags_csv)"
+    )
 
-    with ENGINE.begin() as cx:
-        aid = str(uuid.uuid4())
-        cx.execute(text("""INSERT INTO answers(id,question_id,body,affirmation,tags_csv)
-                           VALUES (:id,:qid,:b,:a,:t)"""),
-                   {"id":aid,"qid":qid,"b":body,"a":aff,"t":tags})
+    cx.execute(
+        text(sql),
+        {
+            "id": aid,
+            "question_id": qid,
+            "body": body,
+            "affirmation": aff,
+            "tags_csv": tags_csv,
+        },
+    )
 
-    m = re.search(r"^Primary\s+Card:\s*(.+)$", body, re.I|re.M)
-    card_name = m.group(1).strip() if m else None
-    img = tarot_image_url(card_name) if card_name else None
-
-    return jsonify({"ok":True,"answer":body,"affirmation":aff,"tags":tags,"image":img})
+m = re.search(r"^Primary\s*Card:\s*(.+)$", body, re.I | re.M)
+card_name = m.group(1).strip() if m else None
+img = tarot_image_url(card_name) if card_name else None
+return jsonify({"ok": True, "answer": body, "affirmation": aff, "tags": tags, "image": img})
 
 @app.route("/daily")
 def daily_view():
