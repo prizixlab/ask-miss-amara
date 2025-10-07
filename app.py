@@ -476,6 +476,40 @@ def api_draw(kind):
     fn = pick_random(kind)
     return jsonify({"file": fn, "url": url_for("static", filename=f"{kind}/{fn}")})
 # === END TAROT & RUNES ===
+# --- ASK MISS AMARA (super minimal) ---
+import os
+from openai import OpenAI
+from flask import request, jsonify
+
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+@app.post("/ask/<kind>")  # use /ask/tarot or /ask/runes
+def ask_kind(kind):
+    if kind not in ("tarot", "runes"):
+        return jsonify({"error": "Unknown kind"}), 400
+
+    question = (request.form.get("question") or "").strip()
+    if not question:
+        question = "Give a gentle, practical daily reading."
+
+    system_msg = (
+        "You are Miss Amara, a warm but grounded tarot/runes reader. "
+        "Offer supportive, realistic guidance. 120–180 words, end with one practical action."
+    )
+
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": f"Modality: {kind}. Question: {question}"},
+        ],
+        temperature=0.8,
+        max_tokens=300,
+    )
+
+    answer = resp.choices[0].message.content.strip()
+    return jsonify({"answer": answer})
+# --- END ASK MISS AMARA ---
 
 
 if __name__ == "__main__":
