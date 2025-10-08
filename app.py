@@ -362,15 +362,16 @@ rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
     
     with ENGINE.begin() as cx:
         
-        sql = """
-INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation)
-VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
-ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
-  name = :n,
-  keywords = :k,
-  meaning = :m,
-  affirmation = :a,
-  created_at = now() """
+       sql = (
+    "INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation) "
+    "VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a) "
+    "ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET "
+    "name = :n, "
+    "keywords = :k, "
+    "meaning = :m, "
+    "affirmation = :a, "
+    "created_at = now()"
+)
 cx.execute(
     text(sql),
     {
