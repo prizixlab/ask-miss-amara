@@ -204,44 +204,44 @@ def signup():
 
     return redirect(url_for("app_view"))
 
-@app.route("/app")
-def app_view():
-    gate = _ensure_login()
-    if gate:
-        return gate
+@app.route("/")
+def index():
+  gate = _ensure_login()
+  if gate:
+    return gate
 
-    uid = session["user_id"]
+  uid = session["user_id"]
 
-   with ENGINE.begin() as cx:
+  with ENGINE.begin() as cx:
     # Recent rune draws (10)
     sql_rune_hist = (
-        "SELECT name, keywords, created_at, draw_date FROM daily_draws "
-        "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
     )
     rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
 
     # Recent questions + answers (20)
     sql_rows = (
-        "SELECT q.created_at, a.body, a.affirmation, a.tags_csv "
-        "FROM questions q "
-        "LEFT JOIN answers a ON a.question_id = q.id "
-        "WHERE q.user_id = :u "
-        "ORDER BY q.created_at DESC "
-        "LIMIT 20"
+      "SELECT q.created_at, a.body, a.affirmation, a.tags_csv "
+      "FROM questions q "
+      "LEFT JOIN answers a ON a.question_id = q.id "
+      "WHERE q.user_id = :u "
+      "ORDER BY q.created_at DESC "
+      "LIMIT 20"
     )
     rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
 
     # Last question time
     sql_last = (
-        "SELECT created_at "
-        "FROM questions "
-        "WHERE user_id = :u "
-        "ORDER BY created_at DESC "
-        "LIMIT 1"
+      "SELECT created_at "
+      "FROM questions "
+      "WHERE user_id = :u "
+      "ORDER BY created_at DESC "
+      "LIMIT 1"
     )
     last = cx.execute(text(sql_last), {"u": uid}).scalar()
 
-return render_template("app.html", rows=rows, last=last, rune_hist=rune_hist)
+  return render_template("app.html", rows=rows, last=last, rune_hist=rune_hist)
 
 
 
