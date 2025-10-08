@@ -289,7 +289,7 @@ with ENGINE.begin() as cx:
         },
     )
 
-m = re.search(r"^Primary\s*Card:\s*(.+)$", body, re.I | re.M)
+m = re.search(r"^Primary\s*Card:\s*(.+)", body, re.I | re.M)
 card_name = m.group(1).strip() if m else None
 img = tarot_image_url(card_name) if card_name else None
 return jsonify({"ok": True, "answer": body, "affirmation": aff, "tags": tags, "image": img})
@@ -366,9 +366,12 @@ rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
 INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation)
 VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
 ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
-  name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()
+  name = :n,
+  keywords = :k,
+  meaning = :m,
+  affirmation = :a,
+  created_at = now()
 """
-
 cx.execute(
     text(sql),
     {
@@ -383,27 +386,33 @@ cx.execute(
 
 @app.route("/moon")
 def moon_view():
-    gate = _ensure_login()
-    if gate: return gate
-    today = datetime.now().date().isoformat()
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        ritual = "Light a candle and name one intention you'll nourish this week."
-    else:
-        from openai import OpenAI
-        client = OpenAI(api_key=api_key)
-        system=("You are Miss Amara. Provide one short ritual suggestion for today (1–2 sentences).")
-        user=f"Today's date is {today}. Offer something gentle and universal."
-        try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role":"system","content":system},{"role":"user","content":user}],
-                temperature=0.7
-            )
-            ritual = resp.choices[0].message.content.strip()
-        except Exception:
-            ritual = "Breathe slowly for two minutes and release one worry on the exhale."
-    return render_template("moon.html", today=today, ritual=ritual)
+  gate = _ensure_login()
+  if gate: return gate
+
+  today = datetime.now().date().isoformat()
+  api_key = os.environ.get("OPENAI_API_KEY")
+
+  if not api_key:
+    ritual = "Light a candle and name one intention you’ll nourish this week."
+  else:
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+
+    system = ("You are Miss Amara. Provide one short ritual suggestion for today (1–2 sentences).")
+    user = f"Today's date is {today}. Offer something gentle and universal."
+
+    try:
+      resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
+        temperature=0.7
+      )
+      ritual = resp.choices[0].message.content.strip()
+    except Exception:
+      ritual = "Breathe slowly for two minutes and release one worry on the exhale."
+
+  return render_template("moon.html", today=today, ritual=ritual)
+
 
 @app.route("/tracker")
 def tracker_view():
