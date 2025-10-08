@@ -368,6 +368,7 @@ VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
 ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
   name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()
 """
+
 cx.execute(
     text(sql),
     {
@@ -379,17 +380,7 @@ cx.execute(
         "a": data["affirmation"],
     },
 )
-   cx.execute(
-  text(sql),
-  {
-    "id": str(uuid.uuid4()),
-    "u": uid,
-    "n": data["name"],
-    "k": data["keywords"],
-    "m": data["meaning"],
-    "a": data["affirmation"],
-  },
-)
+
 @app.route("/moon")
 def moon_view():
     gate = _ensure_login()
