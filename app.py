@@ -106,7 +106,7 @@ def tarot_image_url(name:str|None):
     return url_for("static", filename=f"cards/tarot/{f}") if f else None
 def rune_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+"," ",name.strip().lower())
+    key = re.sub(r"\s+", " ", name.strip().lower())
     f = RUNE_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/runes/{f}") if f else None
 
@@ -302,15 +302,20 @@ def daily_view():
     uid = session["user_id"]
     with ENGINE.begin() as cx:
             with ENGINE.begin() as cx:
-  today = cx.execute(text("""
-SELECT aura_color, emotion, keywords, affirmation, created_at
-FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE
-"""), {"u": uid}).mappings().first()
+  with ENGINE.begin() as cx:
+  sql_today = (
+    "SELECT aura_color, emotion, keywords, affirmation, created_at "
+    "FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE"
+  )
+  today = cx.execute(text(sql_today), {"u": uid}).mappings().first()
 
-  hist = cx.execute(text("""
-SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date
-FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14
-"""), {"u": uid}).mappings().all()
+  sql_hist = (
+    "SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date "
+    "FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14"
+  )
+  hist = cx.execute(text(sql_hist), {"u": uid}).mappings().all()
+
+
 @app.route("/daily/generate", methods=["POST"])
 def daily_generate():
     gate = _ensure_login()
