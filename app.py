@@ -458,9 +458,8 @@ def pick_random(folder):
     return random.choice(files) if files else None
 
 def pick_daily(folder, seed_text):
-    """Deterministic pick (e.g., 'card of the day'):
-    same selection for the same seed_text for all users.
-    """
+        """Deterministic pick (e.g., 'card of the day'): same selection for the same seed_text for all users."""
+
     files = list_images(folder)
     if not files:
         return None
