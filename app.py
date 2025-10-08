@@ -370,8 +370,7 @@ ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
   keywords = :k,
   meaning = :m,
   affirmation = :a,
-  created_at = now()
-"""
+  created_at = now() """
 cx.execute(
     text(sql),
     {
