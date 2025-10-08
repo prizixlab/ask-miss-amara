@@ -101,12 +101,12 @@ RUNE_FILE_MAP = {
 }
 def tarot_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"[ \t\r\n\f\v]+", " ", name.strip().lower())
+    key = re.sub(r"\s+", " ", name.strip().lower())
     f = TAROT_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/tarot/{f}") if f else None
 def rune_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"[ \t\r\n\f\v]+", " ", name.strip().lower())
+    key = re.sub(r"\s+", " ", name.strip().lower())
     f = RUNE_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/runes/{f}") if f else None
 
@@ -155,7 +155,7 @@ def ai_aura():
     )
     out = resp.choices[0].message.content.strip()
     def grab(lbl):
-        m = re.search(rf"{lbl}:\s*(.+)", out, re.I)
+        m = re.search(f"{re.escape(lbl)}:\\s+(.*)", out, re.I)
         return (m.group(1).strip() if m else "")
     return {"aura_color":grab("aura_color|Color|Aura Color"),
             "emotion":grab("emotion|Mood|Emotion"),
@@ -185,9 +185,8 @@ def ai_draw(kind:str, name_hint:str|None):
     )
     out = resp.choices[0].message.content.strip()
     def g(lbl):
-        m = re.search(rf"{lbl}:\s*(.+)", out, re.I)
-        return m.group(1).strip() if m else ""
-    return {"name":g("Name") or (name_hint or f"Unknown {kind}"),
+    m = re.search(f"{re.escape(lbl)}:\\s+(.*)", out, re.I)
+    return m.group(1).strip() if m else ""
             "keywords":g("Keywords"),"meaning":g("Meaning"),
             "affirmation":g("Affirmation") or "I am centered and guided."}
 
@@ -458,9 +457,7 @@ def pick_random(folder):
     return random.choice(files) if files else None
 
 def pick_daily(folder, seed_text):
-
-    files = list_images(folder)
-    if not files:
+# Deterministic pick (e.g., 'card of the day'): same selection for the same seed_text for all users.
         return None
     seed = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
     idx = int(seed, 16) % len(files)
