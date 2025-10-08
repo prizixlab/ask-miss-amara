@@ -101,12 +101,12 @@ RUNE_FILE_MAP = {
 }
 def tarot_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+", " ", name.strip().lower())
+    key = " ".join(name.split()).lower()
     f = TAROT_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/tarot/{f}") if f else None
 def rune_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+", " ", name.strip().lower())
+    key = " ".join(name.split()).lower()
     f = RUNE_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/runes/{f}") if f else None
 
@@ -368,7 +368,6 @@ VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
 ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
   name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()
 """
-
 cx.execute(
     text(sql),
     {
@@ -379,16 +378,8 @@ cx.execute(
         "m": data["meaning"],
         "a": data["affirmation"],
     },
-    )
-    uid = session["user_id"]
-    name_hint = (request.form.get("name") or "").strip() or None
-    sql = (
-  "INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation) "
-  "VALUES (:id, :u, CURRENT_DATE, 'rune', :n, :k, :m, :a) "
-  "ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET "
-  "name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()"
 )
-cx.execute(
+   cx.execute(
   text(sql),
   {
     "id": str(uuid.uuid4()),
@@ -442,10 +433,10 @@ def tracker_view():
         )
     return redirect(url_for("tracker_view"))
 def list_images(folder):
-    """
+   
     Return image filenames located under static/<folder>.
     Example: folder="tarot" -> static/tarot/*.jpg
-    """
+    
     path = os.path.join(app.static_folder, folder)
     exts = (".png", ".jpg", ".jpeg", ".webp", ".gif")
     if not os.path.isdir(path):
