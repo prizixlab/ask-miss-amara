@@ -458,8 +458,7 @@ def pick_random(folder):
     return random.choice(files) if files else None
 
 def pick_daily(folder, seed_text):
-    """
-    Deterministic pick (e.g., 'card of the day'):
+    """Deterministic pick (e.g., 'card of the day'):
     same selection for the same seed_text for all users.
     """
     files = list_images(folder)
@@ -469,18 +468,10 @@ def pick_daily(folder, seed_text):
     idx = int(seed, 16) % len(files)
     return files[idx]
 
-@app.get("/draw/<kind>")   # /draw/tarot or /draw/runes
-def draw_kind(kind):
-    if kind not in ("tarot", "runes"):
-        return "Unknown kind", 404
-    fn = pick_random(kind)
-    img_url = url_for("static", filename=f"{kind}/{fn}") if fn else None
-    return render_template("draw.html", kind=kind, image_url=img_url)
-
 @app.get("/daily/<kind>")  # /daily/tarot or /daily/runes
 def daily_kind(kind):
     if kind not in ("tarot", "runes"):
-        return "Unknown kind", 404
+        today = datetime.now().date().isoformat()
     today = datetime.date.today().isoformat()  # keeps same pick all day
     fn = pick_daily(kind, f"{kind}-{today}")
     img_url = url_for("static", filename=f"{kind}/{fn}") if fn else None
