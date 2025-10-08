@@ -289,7 +289,7 @@ with ENGINE.begin() as cx:
         },
     )
 
-m = re.search(r"^Primary\s*Card\s*:\s*(.+)", body, re.I | re.M)
+m = re.search(r"(?mi)^Primary\s*Card\s*:\s*(.+)", body)
 card_name = m.group(1).strip() if m else None
 img = tarot_image_url(card_name) if card_name else None
 return jsonify({"ok": True, "answer": body, "affirmation": aff, "tags": tags, "image": img})
