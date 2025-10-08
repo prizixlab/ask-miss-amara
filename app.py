@@ -177,14 +177,13 @@ def ai_draw(kind:str, name_hint:str|None):
         model="gpt-4o-mini",
         messages=[{"role":"system","content":system},{"role":"user","content":user}],
         temperature=0.8
-    )
-    out = resp.choices[0].message.content.strip()
-    def g(lbl):
-    m = re.search(f"{re.escape(lbl)}:\\s+(.*)", out, re.I)
-    return m.group(1).strip() if m else ""
-            "keywords":g("Keywords"),"meaning":g("Meaning"),
-            "affirmation":g("Affirmation") or "I am centered and guided."}
-
+    return jsonify({
+    "ok": True,
+    "name": g("Name"),
+    "keywords": g("Keywords"),
+    "meaning": g("Meaning"),
+    "affirmation": g("Affirmation") or "I am centered and guided."
+})
 @app.route("/")
 def index():
     with ENGINE.begin() as cx:
