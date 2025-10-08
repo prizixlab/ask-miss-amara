@@ -101,12 +101,12 @@ RUNE_FILE_MAP = {
 }
 def tarot_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+", " ", name.strip().lower())
+    key = re.sub(r"[ \t\r\n\f\v]+", " ", name.strip().lower())
     f = TAROT_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/tarot/{f}") if f else None
 def rune_image_url(name:str|None):
     if not name: return None
-    key = re.sub(r"\s+", " ", name.strip().lower())
+    key = re.sub(r"[ \t\r\n\f\v]+", " ", name.strip().lower())
     f = RUNE_FILE_MAP.get(key)
     return url_for("static", filename=f"cards/runes/{f}") if f else None
 
@@ -458,7 +458,6 @@ def pick_random(folder):
     return random.choice(files) if files else None
 
 def pick_daily(folder, seed_text):
-        """Deterministic pick (e.g., 'card of the day'): same selection for the same seed_text for all users."""
 
     files = list_images(folder)
     if not files:
