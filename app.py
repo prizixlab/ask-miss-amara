@@ -212,15 +212,17 @@ def app_view():
 
     uid = session["user_id"]
 
-    with ENGINE.begin() as cx:
+   with ENGINE.begin() as cx:
+    # Recent rune draws (10)
+    sql_rune_hist = (
+        "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+        "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+    )
+    rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
+
+    # Recent questions + answers (20)
     sql_rows = (
-        "SELECT "
-        "q.id AS qid, "
-        "q.content AS q, "
-        "COALESCE(a.body,'') AS a, "
-        "COALESCE(a.affirmation,'') AS aff, "
-        "COALESCE(a.tags_csv,'') AS tags, "
-        "q.created_at AS created "
+        "SELECT q.created_at, a.body, a.affirmation, a.tags_csv "
         "FROM questions q "
         "LEFT JOIN answers a ON a.question_id = q.id "
         "WHERE q.user_id = :u "
@@ -229,6 +231,7 @@ def app_view():
     )
     rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
 
+    # Last question time
     sql_last = (
         "SELECT created_at "
         "FROM questions "
@@ -238,12 +241,8 @@ def app_view():
     )
     last = cx.execute(text(sql_last), {"u": uid}).scalar()
 
-return render_template("app.html", rows=rows, last=last)
+return render_template("app.html", rows=rows, last=last, rune_hist=rune_hist)
 
-
-    
-
-    return render_template("app.html", rows=rows, last=last)
 
 
 @app.route("/ask", methods=["POST"])
