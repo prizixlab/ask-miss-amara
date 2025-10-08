@@ -300,9 +300,7 @@ def daily_view():
     gate = _ensure_login()
     if gate: return gate
     uid = session["user_id"]
-    with ENGINE.begin() as cx:
-            with ENGINE.begin() as cx:
-  with ENGINE.begin() as cx:
+    with ENGINE.begin() as cx:     
   sql_today = (
     "SELECT aura_color, emotion, keywords, affirmation, created_at "
     "FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE"
@@ -323,74 +321,92 @@ def daily_generate():
     uid = session["user_id"]
     data = ai_aura()
     with ENGINE.begin() as cx:
-        cx.execute(text("""
-            INSERT INTO daily_entries(id, user_id, entry_date, aura_color, emotion, keywords, affirmation)
-            VALUES (:id, :u, CURRENT_DATE, :c, :e, :k, :a)
-            ON CONFLICT (user_id, entry_date)
-            DO UPDATE SET aura_color=:c, emotion=:e, keywords=:k, affirmation=:a, created_at=now()
-        """), {"id":str(uuid.uuid4()), "u":uid, "c":data["aura_color"], "e":data["emotion"],
-               "k":data["keywords"], "a":data["affirmation"]})
-    return redirect(url_for("daily_view"))
-
-@app.route("/daily/draw")
-def daily_draw_view():
-    gate = _ensure_login()
-    if gate: return gate
+            sql = (
+  "INSERT INTO daily_entries (id, user_id, entry_date, aura_color, emotion, keywords, affirmation) "
+  "VALUES (:id, :u, CURRENT_DATE, :c, :e, :k, :a) "
+  "ON CONFLICT (user_id, entry_date) DO UPDATE SET "
+  "aura_color = :c, emotion = :e, keywords = :k, affirmation = :a, created_at = now()"
+)
+cx.execute(
+  text(sql),
+  {
+    "id": str(uuid.uuid4()),
+    "u": uid,
+    "c": data["aura_color"],
+    "e": data["emotion"],
+    "k": data["keywords"],
+    "a": data["affirmation"],
+  },
+)
     uid = session["user_id"]
     with ENGINE.begin() as cx:
-        tarot = cx.execute(text("""
-            SELECT * FROM daily_draws WHERE user_id=:u AND kind='tarot' AND draw_date=CURRENT_DATE
-        """), {"u":uid}).mappings().first()
-        rune = cx.execute(text("""
-            SELECT * FROM daily_draws WHERE user_id=:u AND kind='rune' AND draw_date=CURRENT_DATE
-        """), {"u":uid}).mappings().first()
-        tarot_hist = cx.execute(text("""
-            SELECT name, keywords, created_at, draw_date FROM daily_draws
-            WHERE user_id=:u AND kind='tarot' ORDER BY draw_date DESC LIMIT 10
-        """), {"u":uid}).mappings().all()
-        rune_hist = cx.execute(text("""
-            SELECT name, keywords, created_at, draw_date FROM daily_draws
-            WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10
-        """), {"u":uid}).mappings().all()
-    t_img = tarot_image_url(tarot["name"]) if tarot else None
-    r_img = rune_image_url(rune["name"]) if rune else None
-    return render_template("draw.html", tarot=tarot, rune=rune, tarot_hist=tarot_hist, rune_hist=rune_hist,
-                           tarot_img=t_img, rune_img=r_img)
+        sql_tarot = (
+  "SELECT * FROM daily_draws "
+  "WHERE user_id=:u AND kind='tarot' AND draw_date=CURRENT_DATE"
+)
+sql_tarot_hist = (
+  "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+  "WHERE user_id=:u AND kind='tarot' ORDER BY draw_date DESC LIMIT 10"
+)
+tarot = cx.execute(text(sql_tarot), {"u": uid}).mappings().first()
+tarot_hist = cx.execute(text(sql_tarot_hist), {"u": uid}).mappings().all()
 
-@app.route("/daily/draw/tarot", methods=["POST"])
-def draw_tarot():
-    gate = _ensure_login()
-    if gate: return gate
-    uid = session["user_id"]
-    name_hint = (request.form.get("name") or "").strip() or None
-    data = ai_draw("tarot", name_hint)
-    with ENGINE.begin() as cx:
-        cx.execute(text("""
-            INSERT INTO daily_draws(id, user_id, draw_date, kind, name, keywords, meaning, affirmation)
-            VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
-            ON CONFLICT (user_id, kind, draw_date)
-            DO UPDATE SET name=:n, keywords=:k, meaning=:m, affirmation=:a, created_at=now()
-        """), {"id":str(uuid.uuid4()), "u":uid, "n":data["name"], "k":data["keywords"],
-               "m":data["meaning"], "a":data["affirmation"]})
-    return redirect(url_for("daily_draw_view"))
-
-@app.route("/daily/draw/rune", methods=["POST"])
-def draw_rune():
+sql_rune_hist = (
+  "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+  "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+)
+rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
     gate = _ensure_login()
     if gate: return gate
     uid = session["user_id"]
     name_hint = (request.form.get("name") or "").strip() or None
-    data = ai_draw("rune", name_hint)
+    
     with ENGINE.begin() as cx:
         cx.execute(text("""
-            INSERT INTO daily_draws(id, user_id, draw_date, kind, name, keywords, meaning, affirmation)
-            VALUES (:id, :u, CURRENT_DATE, 'rune', :n, :k, :m, :a)
-            ON CONFLICT (user_id, kind, draw_date)
-            DO UPDATE SET name=:n, keywords=:k, meaning=:m, affirmation=:a, created_at=now()
-        """), {"id":str(uuid.uuid4()), "u":uid, "n":data["name"], "k":data["keywords"],
-               "m":data["meaning"], "a":data["affirmation"]})
-    return redirect(url_for("daily_draw_view"))
+            sql = (
+  "INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation) "
+  "VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a) "
+  "ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET "
+  "name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()"
 
+cx.execute(
+  text(sql),
+  {
+    "id": str(uuid.uuid4()),
+    "u": uid,
+    "n": data["name"],
+    "k": data["keywords"],
+    "m": data["meaning"],
+    "a": data["affirmation"],
+  },
+)
+    "m": data["meaning"],
+    "a": data["affirmation"],
+  },
+)
+    uid = session["user_id"]
+    name_hint = (request.form.get("name") or "").strip() or None
+    sql = (
+  "INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation) "
+  "VALUES (:id, :u, CURRENT_DATE, 'rune', :n, :k, :m, :a) "
+  "ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET "
+  "name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()"
+)
+cx.execute(
+  text(sql),
+  {
+    "id": str(uuid.uuid4()),
+    "u": uid,
+    "n": data["name"],
+    "k": data["keywords"],
+    "m": data["meaning"],
+    "a": data["affirmation"],
+  },
+)
+
+cx.execute(
+
+)
 @app.route("/moon")
 def moon_view():
     gate = _ensure_login()
@@ -421,22 +437,8 @@ def tracker_view():
     if gate: return gate
     uid = session["user_id"]
     with ENGINE.begin() as cx:
-        rows = cx.execute(text("""
-          SELECT card_name, notes, created_at FROM cards
-          WHERE user_id=:u ORDER BY created_at DESC LIMIT 50
-        """), {"u":uid}).mappings().all()
-        top = cx.execute(text("""
-          SELECT card_name, COUNT(*) c FROM cards
-          WHERE user_id=:u GROUP BY card_name ORDER BY c DESC LIMIT 5
-        """), {"u":uid}).all()
-    return render_template("tracker.html", rows=rows, top=top)
-
-@app.route("/tracker/add", methods=["POST"])
-def tracker_add():
-    gate = _ensure_login()
-    if gate: return gate
-    uid = session["user_id"]
-    name = (request.form.get("card_name") or "").strip()
+)
+top = cx.execute(text(sql_top), {"u": uid}).mappings().all()
     notes = (request.form.get("notes") or "").strip() or None
     if not name: return redirect(url_for("tracker_view"))
     with ENGINE.begin() as cx:
