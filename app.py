@@ -19,52 +19,47 @@ else:
 is_sqlite = ENGINE.url.get_backend_name() == "sqlite"
 
 DDL = """
-CREATE TABLE IF NOT EXISTS users(
-  id UUID PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  subscription_status TEXT DEFAULT 'free',
-  created_at TIMESTAMPTZ DEFAULT now() # Make Postgres-style DDL work on SQLite when needed
-
-); 
-
-CREATE TABLE IF NOT EXISTS questions(
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+CREATE TABLE IF NOT EXISTS daily_draws (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  draw_date DATE NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT,
+  keywords TEXT,
+  meaning TEXT,
+  affirmation TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, kind, draw_date)
 );
-CREATE TABLE IF NOT EXISTS answers(
-  id UUID PRIMARY KEY,
-  question_id UUID REFERENCES questions(id) ON DELETE CASCADE,
+
+CREATE TABLE IF NOT EXISTS answers (
+  id TEXT PRIMARY KEY,
+  question_id TEXT,
   body TEXT NOT NULL,
   affirmation TEXT,
   tags_csv TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS daily_entries(
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+
+CREATE TABLE IF NOT EXISTS daily_entries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
   entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  aura_color TEXT, emotion TEXT, keywords TEXT, affirmation TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (user_id, entry_date)
+  aura_color TEXT,
+  emotion TEXT,
+  keywords TEXT,
+  affirmation TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS daily_draws(
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  draw_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  kind TEXT NOT NULL,
-  name TEXT NOT NULL,
-  keywords TEXT, meaning TEXT, affirmation TEXT,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE (user_id, kind, draw_date)
+
+CREATE TABLE IF NOT EXISTS cards (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  card_name TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS cards(
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  card_name TEXT NOT NULL, notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+"""
 # Make Postgres-style DDL work on SQLite when needed
 DDL_SQL = (DDL
            .replace("UUID", "TEXT")
