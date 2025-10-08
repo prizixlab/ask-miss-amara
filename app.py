@@ -428,18 +428,20 @@ def moon_view():
 def tracker_view():
     gate = _ensure_login()
     if gate: return gate
+    # TODO: if you previously showed rows/top here, reinsert that logic
+    # and pass them into the template.
+    return render_template("tracker.html")
     uid = session["user_id"]
-    with ENGINE.begin() as cx:
-)
-top = cx.execute(text(sql_top), {"u": uid}).mappings().all()
+    name = (request.form.get("card_name") or "").strip()
     notes = (request.form.get("notes") or "").strip() or None
-    if not name: return redirect(url_for("tracker_view"))
+    if not name:
+        return redirect(url_for("tracker_view"))
     with ENGINE.begin() as cx:
-        cx.execute(text("INSERT INTO cards(id,user_id,card_name,notes) VALUES (:id,:u,:n,:t)"),
-                   {"id":str(uuid.uuid4()),"u":uid,"n":name,"t":notes})
-    return redirect(url_for("tracker_view")) # === TAROT & RUNES: image drawing logic ===
-import os, random, hashlib, datetime  # (ignore if already imported)
-
+        cx.execute(
+            text("INSERT INTO cards(id, user_id, card_name, notes) VALUES (:id,:u,:n,:t)"),
+            {"id": str(uuid.uuid4()), "u": uid, "n": name, "t": notes},
+        )
+    return redirect(url_for("tracker_view"))
 def list_images(folder):
     """
     Return image filenames located under static/<folder>.
