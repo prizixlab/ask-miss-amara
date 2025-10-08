@@ -169,21 +169,22 @@ def ai_draw(kind:str, name_hint:str|None):
                     "meaning":"Nurture what's already in your hands and let momentum grow.",
                     "affirmation":"I am a steward of growing gifts."}
     from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-    system=("You are Miss Amara, a gentle tarot/rune guide. Return exactly 4 labeled lines:\n"
-            "Name: <card or rune>\nKeywords: <3–6 words>\nMeaning: <2–4 short sentences>\nAffirmation: I am ...")
-    user=f"Type: {kind}\nName (optional): {name_hint or ''}\nCreate today's daily draw."
+client = OpenAI(api_key=api_key)
+
+try:
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.8
-    return jsonify({
-    "ok": True,
-    "name": g("Name"),
-    "keywords": g("Keywords"),
-    "meaning": g("Meaning"),
-    "affirmation": g("Affirmation") or "I am centered and guided."
-})
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.7,
+        max_tokens=120,
+    )
+    ritual = resp.choices[0].message.content.strip()
+except Exception:
+    ritual = "Breathe slowly for two minutes and release one worry on the exhale."
+
 @app.route("/")
 def index():
     with ENGINE.begin() as cx:
