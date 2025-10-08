@@ -362,28 +362,25 @@ rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
     name_hint = (request.form.get("name") or "").strip() or None
     
     with ENGINE.begin() as cx:
-        cx.execute(text("""
-            sql = (
-  "INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation) "
-  "VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a) "
-  "ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET "
-  "name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()"
+        
+        sql = """
+INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords, meaning, affirmation)
+VALUES (:id, :u, CURRENT_DATE, 'tarot', :n, :k, :m, :a)
+ON CONFLICT (user_id, kind, draw_date) DO UPDATE SET
+  name = :n, keywords = :k, meaning = :m, affirmation = :a, created_at = now()
+"""
 
 cx.execute(
-  text(sql),
-  {
-    "id": str(uuid.uuid4()),
-    "u": uid,
-    "n": data["name"],
-    "k": data["keywords"],
-    "m": data["meaning"],
-    "a": data["affirmation"],
-  },
-)
-    "m": data["meaning"],
-    "a": data["affirmation"],
-  },
-)
+    text(sql),
+    {
+        "id": str(uuid.uuid4()),
+        "u": uid,
+        "n": data["name"],
+        "k": data["keywords"],
+        "m": data["meaning"],
+        "a": data["affirmation"],
+    },
+    )
     uid = session["user_id"]
     name_hint = (request.form.get("name") or "").strip() or None
     sql = (
@@ -402,10 +399,6 @@ cx.execute(
     "m": data["meaning"],
     "a": data["affirmation"],
   },
-)
-
-cx.execute(
-
 )
 @app.route("/moon")
 def moon_view():
