@@ -59,6 +59,13 @@ def _bootstrap_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
+    cx.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
 
 _bootstrap_schema()
 # ---- end bootstrap ----
