@@ -1,0 +1,399 @@
+import os, uuid, re
+from datetime import datetime, timedelta, timezone
+from flask import Flask, render_template, render_template_string, request, redirect, session, jsonify, url_for
+from sqlalchemy import create_engine, tex
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import tex
+
+app = Flask(__name__, static_folder="static", template_folder="templates")
+app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+   DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if DATABASE_URL:
+    ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
+else:
+    # Fallback to local SQLite on Render’s ephemeral disk (fine for now)
+    ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
+is_sqlite = ENGINE.url.get_backend_name() == "sqlite"
+
+DDL = """
+CREATE TABLE IF NOT EXISTS daily_draws (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  draw_date DATE NOT NULL,
+  kind TEXT NOT NULL,
+  name TEXT,
+  keywords TEXT,
+  meaning TEXT,
+  affirmation TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (user_id, kind, draw_date)
+);
+
+CREATE TABLE IF NOT EXISTS answers (
+  id TEXT PRIMARY KEY,
+  question_id TEXT,
+  body TEXT NOT NULL,
+  affirmation TEXT,
+  tags_csv TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS daily_entries (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  aura_color TEXT,
+  emotion TEXT,
+  keywords TEXT,
+  affirmation TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  card_name TEXT NOT NULL,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+# Make Postgres-style DDL work on SQLite when needed
+DDL_SQL = (DDL
+           .replace("UUID", "TEXT")
+           .replace("TIMESTAMPTZ DEFAULT now()", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
+
+ddl_to_run = DDL_SQL if is_sqlite else DDL
+
+with ENGINE.begin() as conn:
+    conn.execute(text(ddl_to_run))
+
+def _ensure_login():
+    if "user_id" not in session:
+        return redirect(url_for("index"))
+    return None
+
+def _now_utc():
+    return datetime.now(timezone.utc)
+
+TAROT_FILE_MAP = {
+    "the fool":"0-the-fool.jpg","the magician":"1-the-magician.jpg","the high priestess":"2-the-high-priestess.jpg",
+    "the empress":"3-the-empress.jpg","the emperor":"4-the-emperor.jpg","the hierophant":"5-the-hierophant.jpg",
+    "the lovers":"6-the-lovers.jpg","the chariot":"7-the-chariot.jpg","strength":"8-strength.jpg",
+    "the hermit":"9-the-hermit.jpg","wheel of fortune":"10-wheel-of-fortune.jpg","justice":"11-justice.jpg",
+    "the hanged man":"12-the-hanged-man.jpg","death":"13-death.jpg","temperance":"14-temperance.jpg",
+    "the devil":"15-the-devil.jpg","the tower":"16-the-tower.jpg","the star":"17-the-star.jpg",
+    "the moon":"18-the-moon.jpg","the sun":"19-the-sun.jpg","judgement":"20-judgement.jpg","the world":"21-the-world.jpg",
+}
+RUNE_FILE_MAP = {
+    "fehu":"fehu.svg","uruz":"uruz.svg","thurisaz":"thurisaz.svg","ansuz":"ansuz.svg","raidho":"raidho.svg",
+    "kenaz":"kenaz.svg","gebo":"gebo.svg","wunjo":"wunjo.svg","hagalaz":"hagalaz.svg","nauthiz":"nauthiz.svg",
+    "isa":"isa.svg","jera":"jera.svg","eihwaz":"eihwaz.svg","perthro":"perthro.svg","algiz":"algiz.svg",
+    "sowilo":"sowilo.svg","tiwaz":"tiwaz.svg","berkano":"berkano.svg","ehwaz":"ehwaz.svg","mannaz":"mannaz.svg",
+    "laguz":"laguz.svg","ingwaz":"ingwaz.svg","othala":"othala.svg","dagaz":"dagaz.svg",
+}
+def tarot_image_url(name:str|None):
+    if not name: return None
+    key = " ".join(name.split()).lower()
+    f = TAROT_FILE_MAP.get(key)
+    return url_for("static", filename=f"cards/tarot/{f}") if f else None
+def rune_image_url(name:str|None):
+    if not name: return None
+    key = " ".join(name.split()).lower()
+    f = RUNE_FILE_MAP.get(key)
+    return url_for("static", filename=f"cards/runes/{f}") if f else None
+
+def ai_oracle_response(question:str):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    return (
+  "Today's energy suggests gentle clarity. Name two hopes and one boundary. Trust your pacing.",
+  "I am calmly guided",
+  "clarity, pacing, trust",
+)
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    system = ("You are Miss Amara, a compassionate tarot guide. Offer grounded, kind insights in plain language. "
+              "Use metaphor sparingly. Never give medical/legal/financial advice. Encourage reflection and free will. "
+              "At the top include an optional line 'Primary Card: <Name>' if one fits. "
+              "End with one concise affirmation beginning with 'I am…' and 3 lowercase tags (comma-separated).")
+    user = f"Question: {question}\nRespond in 3–5 short paragraphs, then provide an affirmation and tags."
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role":"system","content":system},{"role":"user","content":user}],
+            temperature=0.8
+        )
+        full = resp.choices[0].message.content.strip()
+        affirmation = "I am centered and guided."
+        tags = "reflection, guidance, calm"
+        return (full, affirmation, tags)
+    except Exception:
+        return ("The oracle is quiet for a moment—please try again shortly.", "I am patient with the process.","retry, patience, process")
+
+def ai_aura():
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {"aura_color":"lavender","emotion":"calm, receptive",
+                "keywords":"intuition, stillness, trust",
+                "affirmation":"I am gently aligned with my inner knowing."}
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    system=("You are Miss Amara. Create a daily aura with aura_color (CSS color words), emotion (few words), "
+            "keywords (3–5, comma-separated), affirmation (starts with 'I am'). Return four labeled lines.")
+    user="Generate today's aura."
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
+        temperature=0.8
+    )
+    out = resp.choices[0].message.content.strip()
+    def grab(lbl):
+        m = re.search(f"{re.escape(lbl)}:\\s+(.*)", out, re.I)
+        return (m.group(1).strip() if m else "")
+    return {"aura_color":grab("aura_color|Color|Aura Color"),
+            "emotion":grab("emotion|Mood|Emotion"),
+            "keywords":grab("keywords"),
+            "affirmation":grab("affirmation") or "I am centered and guided."}
+
+def ai_draw(kind:str, name_hint:str|None):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        if kind=="tarot":
+            return {"name":name_hint or "The High Priestess","keywords":"intuition, stillness, inner voice",
+                    "meaning":"Quiet your mind; answers arrive when you stop chasing.",
+                    "affirmation":"I am guided by calm inner knowing."}
+        else:
+            return {"name":name_hint or "Fehu","keywords":"beginnings, resources, flow",
+                    "meaning":"Nurture what's already in your hands and let momentum grow.",
+                    "affirmation":"I am a steward of growing gifts."}
+    from openai import OpenAI
+client = OpenAI(api_key=api_key)
+
+try:
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        temperature=0.7,
+        max_tokens=120,
+    )
+    ritual = resp.choices[0].message.content.strip()
+except Exception:
+    ritual = "Breathe slowly for two minutes and release one worry on the exhale."
+
+@app.route("/")
+def index():
+    with ENGINE.begin() as cx:
+        c = cx.execute(text("SELECT COUNT(*) FROM users")).scalar()
+    return render_template("index.html", signup_count=c)
+
+@app.route("/signup", methods=["POST"])
+def signup():
+    email = (request.form.get("email") or "").strip().lower()
+    if not email or "@" not in email:
+        return redirect(url_for("index"))
+
+    # For now we don’t touch the DB on signup; just create a session
+    uid = str(uuid.uuid4())
+    session["email"] = email
+    session["user_id"] = uid
+
+    return redirect(url_for("app_view"))
+
+@app.route("/")
+def index():
+  gate = _ensure_login()
+  if gate:
+
+    uid = session["user_id"]
+
+  with ENGINE.begin() as cx:
+    # Recent rune draws (10)
+    sql_rune_histt = (
+      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+    )
+    rune_histt = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
+
+    # Recent questions + answers (20)
+    sql_rows = (
+      "SELECT q.created_at, a.body, a.affirmation, a.tags_csv "
+      "FROM questions q "
+      "LEFT JOIN answers a ON a.question_id = q.id "
+      "WHERE q.user_id = :u "
+      "ORDER BY q.created_at DESC "
+      "LIMIT 20"
+    )
+    rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
+
+    # Last question time
+    sql_last = (
+      "SELECT created_at "
+      "FROM questions "
+      "WHERE user_id = :u "
+      "ORDER BY created_at DESC "
+      "LIMIT 1"
+    )
+    last = cx.execute(text(sql_last), {"u": uid}).scalar()
+
+  return render_template("app.html", rows=rows, last=last, rune_histt=rune_hist)
+
+
+
+@app.route("/ask", methods=["POST"])
+def ask():
+    gate = _ensure_login()
+    if gate: return gate
+    uid = session["user_id"]
+    data = request.get_json() or {}
+    q = (data.get("question") or "").strip()
+    if not q:
+        return jsonify({"ok":False,"error":"empty_question"}), 400
+
+    with ENGINE.begin() as cx:
+        last = cx.execute(text("SELECT created_at FROM questions WHERE user_id=:u ORDER BY created_at DESC LIMIT 1"),
+                          {"u":uid}).scalar()
+        if last and (_now_utc() - last) < timedelta(hours=24):
+            return jsonify({"ok":False,"error":"rate_limited"}), 429
+
+        qid = str(uuid.uuid4())
+        body, aff, tags = ai_oracle_response(q)
+tags_csv = tags
+
+with ENGINE.begin() as cx:
+  with ENGINE.begin() as cx:
+    aid = str(uuid.uuid4())
+    sql = (
+      "INSERT INTO answers (id, question_id, body, affirmation, tags_csv) "
+      "VALUES (:id, :question_id, :body, :affirmation, :tags_csv)"
+    )
+    cx.execute(
+      text(sql),
+      {
+        "id": aid,
+        "question_id": qid,
+      },
+    )
+
+
+    aid = str(uuid.uuid4())
+  sql = (
+    "INSERT INTO answers (id, question_id, body, affirmation, tags_csv) "
+    "VALUES (:id, :question_id, :body, :affirmation, :tags_csv)"
+  )
+  cx.execute(
+    text(sql),
+    {
+      "id": aid,
+      "question_id": qid,
+    },
+  )
+
+  # Optional image: parse "Primary Card: <name>" out of the body
+  m = re.search(r'(?mi)^Primary\s*Card\s*:\s*(.+)', body)
+  card_name = m.group(1).strip() if m else None
+  img = tarot_image_url(card_name) if card_name else None
+
+@app.route("/daily")
+def daily_view():
+
+
+  with ENGINE.begin() as cx:
+    # Today's entry (if any)
+    sql_today = (
+      "SELECT aura_color, emotion, keywords, affirmation, created_at "
+      "FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE"
+    )
+
+    # Recent 14 days of entries
+    sql_hist = (
+      "SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date "
+      "FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14"
+    )
+    hist = cx.execute(text(sql_hist), {"u": uid}).mappings().all()
+
+    # Recent rune draws (optional)
+with ENGINE.begin() as cx:
+    sql = (
+        "INSERT INTO daily_entries (id, user_id, entry_date, aura_color, emotion, keywords, affirmation) "
+        "VALUES (:id, :u, CURRENT_DATE, :c, :e, :k, :a) "
+        "ON CONFLICT (user_id, entry_date) DO UPDATE SET "
+        "aura_color = :c, emotion = :e, keywords = :k, affirmation = :a, created_at = now()"
+    )
+    cx.execute(
+        text(sql),
+        {
+            "id": str(uuid.uuid4()),
+            "u": uid,
+            "c": data["aura_color"],
+            "e": data["emotion"],
+            "k": data["keywords"],
+            "a": data["affirmation"],
+        },
+    )
+    sql_rune_hist = (
+      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+    )
+    rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
+
+  return render_template("daily.html", today=today, hist=hist, rune_hist=rune_hist)
+@app.route("/daily/generate", methods=["POST"])
+def daily_generate():
+  gate = _ensure_login()
+  if gate: return gate
+
+  uid = session["user_id"]
+  data = ai_aura()  # returns aura_color, emotion, keywords, affirmation
+
+  # Upsert today's daily entry
+  with ENGINE.begin() as cx:
+    sql = (
+      "INSERT INTO daily_entries (id, user_id, entry_date, aura_color, emotion, keywords, affirmation) "
+      "VALUES (:id, :u, CURRENT_DATE, :c, :e, :k, :a) "
+      "ON CONFLICT (user_id, entry_date) DO UPDATE SET "
+      "aura_color = :c, emotion = :e, keywords = :k, affirmation = :a, created_at = now()"
+    )
+    cx.execute(
+      text(sql),
+      {
+        "id": str(uuid.uuid4()),
+        "u": uid,
+        "c": data["aura_color"],
+        "e": data["emotion"],
+        "k": data["keywords"],
+        "a": data["affirmation"],
+      },
+    )
+
+  # Fetch recent draws history to display back to the page (optional)
+  with ENGINE.begin() as cx:
+    sql_tarot = (
+      "SELECT * FROM daily_draws "
+      "WHERE user_id=:u AND kind='tarot' AND draw_date=CURRENT_DATE"
+    )
+    sql_tarot_hist = (
+      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+      "WHERE user_id=:u AND kind='tarot' ORDER BY draw_date DESC LIMIT 10"
+    )
+    sql_rune_hist = (
+      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
+      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
+    )
+
+    tarot = cx.execute(text(sql_tarot), {"u": uid}).mappings().first()
+    tarot_hist = cx.execute(text(sql_tarot_hist), {"u": uid}).mappings().all()
+    rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
+
+  return jsonify({
+    "ok": True,
+    "aura": data,
+    "tarot": tarot,
+    "tarot_hist": tarot_hist,
+    "rune_hist": rune_hist
+  })
+
