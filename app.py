@@ -40,16 +40,17 @@ def readyz():
 from sqlalchemy import text  # keep only one 'text' import in the file
 
 def _bootstrap_schema():
+    # create tables if they don't exist
     with ENGINE.begin() as cx:
-        cx.execute(text("""
+        cx.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS questions (
                 id TEXT PRIMARY KEY,
                 user_id TEXT,
                 body TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """))
-        cx.execute(text("""
+        """)
+        cx.exec_driver_sql("""
             CREATE TABLE IF NOT EXISTS answers (
                 id TEXT PRIMARY KEY,
                 question_id TEXT,
@@ -58,14 +59,14 @@ def _bootstrap_schema():
                 tags_csv TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        """))
-    cx.execute(text("""
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            email TEXT UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """))
+        """)
+        cx.exec_driver_sql("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
 _bootstrap_schema()
 # ---- end bootstrap ----
