@@ -283,12 +283,31 @@ def signup():
     if not email or "@" not in email:
         return redirect(url_for("index"))
 
-    # For now we don’t touch the DB on signup; just create a session
-    uid = str(uuid.uuid4())
+    # Create-or-get user in DB so session maps to a real user
+    with ENGINE.begin() as cx:
+        try:
+            uid = str(uuid.uuid4())
+            cx.exec_driver_sql(
+                "INSERT INTO users (id, email) VALUES (:id, :email)",
+                {"id": uid, "email": email},
+            )
+        except IntegrityError:
+            uid = cx.exec_driver_sql(
+                "SELECT id FROM users WHERE email = :email",
+                {"email": email},
+            ).scalar_one_or_none()
+            if uid is None:
+                return "Could not find or create user", 500
+
     session["email"] = email
     session["user_id"] = uid
-
     return redirect(url_for("app_view"))
+
+@app.route("/healthz")
+def healthz():
+    # Reuse the same DB check as /readyz
+    return readyz()
+
 
 @app.route("/app")
 def app_view():
