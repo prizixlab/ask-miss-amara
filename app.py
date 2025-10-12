@@ -14,6 +14,13 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+# ---- Database engine (define before bootstrap) ----
+if DATABASE_URL:
+    ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
+else:
+    # Fallback to local SQLite on Render’s ephemeral disk (ok for free tier)
+    ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
+# ---------------------------------------------------
 
 
 @app.route("/readyz")
