@@ -22,7 +22,6 @@ else:
     ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
 
 IS_SQLITE = ENGINE.url.get_backend_name() == "sqlite"
-ddl_to_run = DDL_SQL if IS_SQLITE else DDL
 # ---------------------------------------------------
 
 
