@@ -20,6 +20,9 @@ if DATABASE_URL:
 else:
     # Fallback to local SQLite on Render’s ephemeral disk (ok for free tier)
     ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
+
+IS_SQLITE = ENGINE.url.get_backend_name() == "sqlite"
+ddl_to_run = DDL_SQL if IS_SQLITE else DDL
 # ---------------------------------------------------
 
 
@@ -153,7 +156,7 @@ try:
 except Exception as e:
     print("DDL init error:", e)
 
-ddl_to_run = DDL_SQL if is_sqlite else DDL
+ddl_to_run = DDL_SQL if IS_SQLITE else DDL
 
 def _ensure_login():
     if "user_id" not in session:
