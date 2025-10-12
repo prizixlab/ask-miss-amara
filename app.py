@@ -16,28 +16,46 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 
-@app.route("/healthz")
-def healthz():
-    return "ok", 200
-if not DATABASE_URL:
-   DATABASE_URL = os.environ.get("DATABASE_URL")
-
-if DATABASE_URL:
-    ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
-else:
-    # Fallback to local SQLite on Render’s ephemeral disk (fine for now)
-    ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
-is_sqlite = ENGINE.url.get_backend_name() == "sqlite"
 @app.route("/readyz")
 def readyz():
     try:
-        with ENGINE.begin() as cx:
-            cx.execute(text("SELECT 1"))
+        with ENGINE.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
         return "ready", 200
     except Exception:
         return "not-ready", 500
-# ---- Bootstrap DB schema (safe to run every start) ----
-from sqlalchemy import text  # keep only one 'text' import in the file
+
+
+def _bootstrap_schema():
+    """Create tables idempotently with a single explicit transaction."""
+    ddl = [
+        """
+        CREATE TABLE IF NOT EXISTS questions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            body TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS answers (
+            id TEXT PRIMARY KEY,
+            question_id TEXT,
+            body TEXT NOT NULL,
+            affirmation TEXT,
+            tags_csv TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    ]
+
 
 def _bootstrap_schema():
     # create tables if they don't exist
