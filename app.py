@@ -64,6 +64,197 @@ def _bootstrap_schema():
         )
         """,
     ]
+from flask import render_template_string
+from datetime import date
+
+def upsert_daily_draw(kind: str, user_id: str):
+    """Return today's draw for (user_id, kind); insert a placeholder if none exists yet."""
+    if kind not in ("rune", "tarot"):
+        raise ValueError("unknown kind")
+    today = date.today().isoformat()
+    with ENGINE.begin() as cx:
+        row = cx.exec_driver_sql("""
+            SELECT id, name, keywords
+            FROM daily_draws
+            WHERE user_id = :u AND kind = :k AND draw_date = :d
+        """, {"u": user_id, "k": kind, "d": today}).mappings().first()
+        if row:
+            return row
+        # TODO: replace with your real draw logic
+        defaults = {
+            "rune": ("Raidho", "journey, movement, change"),
+            "tarot": ("The Sun", "vitality, success, joy"),
+        }
+        name, keywords = defaults[kind]
+        did = str(uuid.uuid4())
+        cx.exec_driver_sql("""
+            INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords)
+            VALUES (:id, :u, :d, :k, :name, :kw)
+        """, {"id": did, "u": user_id, "d": today, "k": kind, "name": name, "kw": keywords})
+        return {"id": did, "name": name, "keywords": keywords}
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+# Accept GET *and* POST so menu clicks (GET) won’t 405/500
+@app.route("/draw/<kind>", methods=["GET", "POST"])
+def draw(kind):
+    gate = _ensure_login()
+    if gate:
+        return gate
+    try:
+        upsert_daily_draw(kind, session["user_id"])
+        return redirect(url_for("app_view"))
+    except Exception:
+        app.logger.exception("daily draw failed")
+        return "Error creating today's draw", 500
+
+# Friendly aliases used by menus
+@app.route("/daily/tarot", methods=["GET", "POST"])
+def daily_tarot():
+    return draw("tarot")
+
+@app.route("/daily/rune", methods=["GET", "POST"])
+def daily_rune():
+    return draw("rune")
+
+@app.route("/journal", methods=["GET", "POST"])
+def journal():
+    gate = _ensure_login()
+    if gate:
+        return gate
+    uid = session["user_id"]
+    if request.method == "POST":
+        # create a simple entry for today
+        with ENGINE.begin() as cx:
+            cx.exec_driver_sql(
+                "INSERT INTO daily_entries (id, user_id) VALUES (:id, :u)",
+                {"id": str(uuid.uuid4()), "u": uid},
+            )
+        return redirect(url_for("journal"))
+    # list entries
+    with ENGINE.connect() as cx:
+        rows = cx.exec_driver_sql("""
+            SELECT entry_date, created_at FROM daily_entries
+            WHERE user_id = :u
+            ORDER BY created_at DESC
+        """, {"u": uid}).mappings().all()
+    return render_template_string("""
+        <h1>Journal</h1>
+        <form method="post"><button>Add today’s entry</button></form>
+        <ul>
+        {% for r in rows %}
+          <li>{{ r.entry_date }} — {{ r.created_at }}</li>
+        {% else %}
+          <li>No entries yet.</li>
+        {% endfor %}
+        </ul>
+        <p><a href="{{ url_for('app_view') }}">Back</a></p>
+    """, rows=rows)
+
+# Global safety net so 500s show a friendly message while logs capture details
+@app.errorhandler(Exception)
+def on_error(e):
+    app.logger.exception("Unhandled exception: %s", e)
+    return "Something went wrong. Please try again.", 500
+# -------- Simple, template-free routes to make the menu work --------
+from flask import render_template_string
+from datetime import date
+
+def upsert_daily_draw(kind: str, user_id: str):
+    """Return today's draw for (user_id, kind); insert a placeholder if none exists yet."""
+    if kind not in ("rune", "tarot"):
+        raise ValueError("unknown kind")
+    today = date.today().isoformat()
+    with ENGINE.begin() as cx:
+        row = cx.exec_driver_sql("""
+            SELECT id, name, keywords
+            FROM daily_draws
+            WHERE user_id = :u AND kind = :k AND draw_date = :d
+        """, {"u": user_id, "k": kind, "d": today}).mappings().first()
+        if row:
+            return row
+        # TODO: replace with your real draw logic
+        defaults = {
+            "rune": ("Raidho", "journey, movement, change"),
+            "tarot": ("The Sun", "vitality, success, joy"),
+        }
+        name, keywords = defaults[kind]
+        did = str(uuid.uuid4())
+        cx.exec_driver_sql("""
+            INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords)
+            VALUES (:id, :u, :d, :k, :name, :kw)
+        """, {"id": did, "u": user_id, "d": today, "k": kind, "name": name, "kw": keywords})
+        return {"id": did, "name": name, "keywords": keywords}
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+# Accept GET *and* POST so menu clicks (GET) won’t 405/500
+@app.route("/draw/<kind>", methods=["GET", "POST"])
+def draw(kind):
+    gate = _ensure_login()
+    if gate:
+        return gate
+    try:
+        upsert_daily_draw(kind, session["user_id"])
+        return redirect(url_for("app_view"))
+    except Exception:
+        app.logger.exception("daily draw failed")
+        return "Error creating today's draw", 500
+
+# Friendly aliases used by menus
+@app.route("/daily/tarot", methods=["GET", "POST"])
+def daily_tarot():
+    return draw("tarot")
+
+@app.route("/daily/rune", methods=["GET", "POST"])
+def daily_rune():
+    return draw("rune")
+
+@app.route("/journal", methods=["GET", "POST"])
+def journal():
+    gate = _ensure_login()
+    if gate:
+        return gate
+    uid = session["user_id"]
+    if request.method == "POST":
+        # create a simple entry for today
+        with ENGINE.begin() as cx:
+            cx.exec_driver_sql(
+                "INSERT INTO daily_entries (id, user_id) VALUES (:id, :u)",
+                {"id": str(uuid.uuid4()), "u": uid},
+            )
+        return redirect(url_for("journal"))
+    # list entries
+    with ENGINE.connect() as cx:
+        rows = cx.exec_driver_sql("""
+            SELECT entry_date, created_at FROM daily_entries
+            WHERE user_id = :u
+            ORDER BY created_at DESC
+        """, {"u": uid}).mappings().all()
+    return render_template_string("""
+        <h1>Journal</h1>
+        <form method="post"><button>Add today’s entry</button></form>
+        <ul>
+        {% for r in rows %}
+          <li>{{ r.entry_date }} — {{ r.created_at }}</li>
+        {% else %}
+          <li>No entries yet.</li>
+        {% endfor %}
+        </ul>
+        <p><a href="{{ url_for('app_view') }}">Back</a></p>
+    """, rows=rows)
+
+# Global safety net so 500s show a friendly message while logs capture details
+@app.errorhandler(Exception)
+def on_error(e):
+    app.logger.exception("Unhandled exception: %s", e)
+    return "Something went wrong. Please try again.", 500
 
 
 def _bootstrap_schema():
