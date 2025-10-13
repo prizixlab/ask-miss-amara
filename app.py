@@ -189,8 +189,8 @@ def upsert_daily_draw(kind: str, user_id: str):
         """, {"id": did, "u": user_id, "d": today, "k": kind, "name": name, "kw": keywords})
         return {"id": did, "name": name, "keywords": keywords}
 
-@app.route("/logout")
-def logout():
+@app.route("/logout", endpoint="logout")
+def do_logout():
     session.clear()
     return redirect(url_for("index"))
 
