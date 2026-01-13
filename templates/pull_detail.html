@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% set title = "Pull Details" %}
+
+{% block content %}
+  <section>
+    <h1>Pull for {{ pull_date }}</h1>
+  </section>
+
+  {% if pull %}
+    <article>
+      <h2>{{ pull.deck_name }}</h2>
+      <h3>{{ pull.card_names }}</h3>
+      <p>{{ pull.interpretation }}</p>
+      {% if pull.image_url %}
+        <img src="{{ pull.image_url }}" alt="Tarot card image" />
+      {% endif %}
+    </article>
+  {% else %}
+    <article>
+      <p>We don't have a pull saved for this date yet.</p>
+      <p><a href="{{ url_for('archive') }}">Back to archive</a></p>
+    </article>
+  {% endif %}
+{% endblock %}

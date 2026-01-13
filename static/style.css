@@ -1,8 +1,134 @@
-:root{--cream:#f7f3ee;--lavender:#cdb4db;--ink:#2c2c2c}
-html,body{background:var(--cream);color:var(--ink)}
-a,button,.button{background:var(--lavender)!important;border:none!important;color:#222!important}
-button:hover{opacity:.92}
-article{background:#fff;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.06);padding:16px}
-nav a{margin-right:8px;padding:6px 10px;border-radius:10px;text-decoration:none;background:rgba(205,180,219,.35)}
-.draw-card,img[alt*="tarot"],img[alt*="rune"]{max-width:240px;border-radius:14px;box-shadow:0 10px 24px rgba(0,0,0,.12)}
-.amara-pic{width:160px;border-radius:50%;box-shadow:0 6px 18px rgba(0,0,0,.15);display:block;margin:10px auto}
+:root {
+  --cream: #f7f3ee;
+  --lavender: #cdb4db;
+  --ink: #2c2c2c;
+  --muted: #6b6b6b;
+  --error: #b03a2e;
+  --success: #2e6b4f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+
+a,
+button,
+.button {
+  background: var(--lavender);
+  border: none;
+  color: #222;
+}
+
+header {
+  padding: 16px 24px 0;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+nav a {
+  margin-right: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  text-decoration: none;
+  background: rgba(205, 180, 219, 0.35);
+}
+
+h1,
+h2,
+h3 {
+  margin-top: 0;
+}
+
+article {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+img {
+  max-width: 100%;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+}
+
+input,
+textarea {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.error {
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.flash {
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.flash-success {
+  background: rgba(46, 107, 79, 0.12);
+  color: var(--success);
+}
+
+.flash-error {
+  background: rgba(176, 58, 46, 0.12);
+  color: var(--error);
+}
+
+.flash-info {
+  background: rgba(44, 44, 44, 0.08);
+  color: var(--muted);
+}
+
+ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+ul li {
+  padding: 6px 0;
+}
+
+ul li a {
+  text-decoration: none;
+}

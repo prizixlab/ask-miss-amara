@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% set title = "Admin" %}
+
+{% block content %}
+  <section>
+    <h1>Manage Tarot Pulls</h1>
+    <p>Use this form to create or update a pull for any date.</p>
+    <p><a href="{{ url_for('admin_logout') }}">Log out</a></p>
+  </section>
+
+  <form method="post">
+    <label>
+      Pull date (YYYY-MM-DD)
+      <input type="text" name="pull_date" value="{{ form.data.pull_date }}" required />
+      {% if form.errors.pull_date %}
+        <span class="error">{{ form.errors.pull_date }}</span>
+      {% endif %}
+    </label>
+
+    <label>
+      Deck name
+      <input type="text" name="deck_name" value="{{ form.data.deck_name }}" required />
+      {% if form.errors.deck_name %}
+        <span class="error">{{ form.errors.deck_name }}</span>
+      {% endif %}
+    </label>
+
+    <label>
+      Card name(s)
+      <input type="text" name="card_names" value="{{ form.data.card_names }}" required />
+      {% if form.errors.card_names %}
+        <span class="error">{{ form.errors.card_names }}</span>
+      {% endif %}
+    </label>
+
+    <label>
+      Interpretation
+      <textarea name="interpretation" rows="4" required>{{ form.data.interpretation }}</textarea>
+      {% if form.errors.interpretation %}
+        <span class="error">{{ form.errors.interpretation }}</span>
+      {% endif %}
+    </label>
+
+    <label>
+      Image URL (optional)
+      <input type="url" name="image_url" value="{{ form.data.image_url }}" />
+    </label>
+
+    <button type="submit">Save pull</button>
+  </form>
+
+  <section>
+    <h2>Recent pulls</h2>
+    {% if pulls %}
+      <ul>
+        {% for pull in pulls %}
+          <li>
+            <a href="{{ url_for('admin', date=pull.pull_date) }}">
+              {{ pull.pull_date }} — {{ pull.deck_name }} — {{ pull.card_names }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>No pulls saved yet.</p>
+    {% endif %}
+  </section>
+{% endblock %}
