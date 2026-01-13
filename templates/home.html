@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set title = "Today's Tarot Pull" %}
+
+{% block content %}
+  <section>
+    <h1>Today's Tarot Pull</h1>
+    <p>America/New_York date: {{ today }}</p>
+  </section>
+
+  {% if pull %}
+    <article>
+      <h2>{{ pull.deck_name }}</h2>
+      <h3>{{ pull.card_names }}</h3>
+      <p>{{ pull.interpretation }}</p>
+      {% if pull.image_url %}
+        <img src="{{ pull.image_url }}" alt="Tarot card image" />
+      {% endif %}
+      <p>
+        <a href="{{ url_for('pull_detail', pull_date=pull.pull_date) }}">Read full pull</a>
+      </p>
+    </article>
+  {% else %}
+    <article>
+      <p>No pull has been saved for today yet.</p>
+      <p>
+        <a href="{{ url_for('admin') }}">Add today's pull</a> to share it with visitors.
+      </p>
+    </article>
+  {% endif %}
+{% endblock %}

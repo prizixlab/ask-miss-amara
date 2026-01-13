@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% set title = "Tarot Archive" %}
+
+{% block content %}
+  <section>
+    <h1>Archive</h1>
+    <p>Browse past pulls (most recent first).</p>
+  </section>
+
+  {% if pulls %}
+    <ul>
+      {% for pull in pulls %}
+        <li>
+          <a href="{{ url_for('pull_detail', pull_date=pull.pull_date) }}">
+            {{ pull.pull_date }} — {{ pull.deck_name }} — {{ pull.card_names }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <article>
+      <p>No pulls yet. Once an admin saves a pull, it will appear here.</p>
+    </article>
+  {% endif %}
+{% endblock %}

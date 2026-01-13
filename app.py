@@ -1,689 +1,273 @@
-import os, uuid, re
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-from flask import Flask, render_template, render_template_string, request, redirect, session, jsonify, url_for
+import os
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
+
+from flask import (
+    Flask,
+    abort,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
-from openai import OpenAI
-AUTH_BYPASS = os.getenv("AUTH_BYPASS", "1") == "1"          # default ON in dev
-ENFORCE_RATE_LIMIT = os.getenv("ENFORCE_RATE_LIMIT", "0") == "1"  # default OFF in dev
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+EASTERN_TZ = ZoneInfo("America/New_York")
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret")
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
-# ---- Database engine (define before bootstrap) ----
 if DATABASE_URL:
     ENGINE = create_engine(DATABASE_URL, pool_pre_ping=True)
 else:
-    # Fallback to local SQLite on Render’s ephemeral disk (ok for free tier)
     ENGINE = create_engine("sqlite:///app.db", pool_pre_ping=True)
 
-IS_SQLITE = ENGINE.url.get_backend_name() == "sqlite"
-# ---------------------------------------------------
-
-
-@app.route("/readyz")
-def readyz():
-    try:
-        with ENGINE.connect() as conn:
-            conn.exec_driver_sql("SELECT 1")
-        return "ready", 200
-    except Exception:
-        return "not-ready", 500
-
-
-def _bootstrap_schema():
-    """Create tables idempotently with a single explicit transaction."""
-    ddl = [
-        """
-        CREATE TABLE IF NOT EXISTS questions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT,
-            body TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS answers (
-            id TEXT PRIMARY KEY,
-            question_id TEXT,
-            body TEXT NOT NULL,
-            affirmation TEXT,
-            tags_csv TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            email TEXT UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    ]
-from flask import render_template_string
-from datetime import date
-
-def upsert_daily_draw(kind: str, user_id: str):
-    """Return today's draw for (user_id, kind); insert a placeholder if none exists yet."""
-    if kind not in ("rune", "tarot"):
-        raise ValueError("unknown kind")
-    today = date.today().isoformat()
-    with ENGINE.begin() as cx:
-        row = cx.exec_driver_sql("""
-            SELECT id, name, keywords
-            FROM daily_draws
-            WHERE user_id = :u AND kind = :k AND draw_date = :d
-        """, {"u": user_id, "k": kind, "d": today}).mappings().first()
-        if row:
-            return row
-        # TODO: replace with your real draw logic
-        defaults = {
-            "rune": ("Raidho", "journey, movement, change"),
-            "tarot": ("The Sun", "vitality, success, joy"),
-        }
-        name, keywords = defaults[kind]
-        did = str(uuid.uuid4())
-        cx.exec_driver_sql("""
-            INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords)
-            VALUES (:id, :u, :d, :k, :name, :kw)
-        """, {"id": did, "u": user_id, "d": today, "k": kind, "name": name, "kw": keywords})
-        return {"id": did, "name": name, "keywords": keywords}
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("index"))
-
-# Accept GET *and* POST so menu clicks (GET) won’t 405/500
-@app.route("/draw/<kind>", methods=["GET", "POST"])
-def draw(kind):
-    gate = _ensure_login()
-    if gate:
-        return gate
-    try:
-        upsert_daily_draw(kind, session["user_id"])
-        return redirect(url_for("app_view"))
-    except Exception:
-        app.logger.exception("daily draw failed")
-        return "Error creating today's draw", 500
-
-# Friendly aliases used by menus
-@app.route("/daily/tarot", methods=["GET", "POST"])
-def daily_tarot():
-    return draw("tarot")
-
-@app.route("/daily/rune", methods=["GET", "POST"])
-def daily_rune():
-    return draw("rune")
-
-@app.route("/journal", methods=["GET", "POST"])
-def journal():
-    gate = _ensure_login()
-    if gate:
-        return gate
-    uid = session["user_id"]
-    if request.method == "POST":
-        # create a simple entry for today
-        with ENGINE.begin() as cx:
-            cx.exec_driver_sql(
-                "INSERT INTO daily_entries (id, user_id) VALUES (:id, :u)",
-                {"id": str(uuid.uuid4()), "u": uid},
-            )
-        return redirect(url_for("journal"))
-    # list entries
-    with ENGINE.connect() as cx:
-        rows = cx.exec_driver_sql("""
-            SELECT entry_date, created_at FROM daily_entries
-            WHERE user_id = :u
-            ORDER BY created_at DESC
-        """, {"u": uid}).mappings().all()
-    return render_template_string("""
-        <h1>Journal</h1>
-        <form method="post"><button>Add today’s entry</button></form>
-        <ul>
-        {% for r in rows %}
-          <li>{{ r.entry_date }} — {{ r.created_at }}</li>
-        {% else %}
-          <li>No entries yet.</li>
-        {% endfor %}
-        </ul>
-        <p><a href="{{ url_for('app_view') }}">Back</a></p>
-    """, rows=rows)
-
-# Global safety net so 500s show a friendly message while logs capture details
-@app.errorhandler(Exception)
-def on_error(e):
-    app.logger.exception("Unhandled exception: %s", e)
-    return "Something went wrong. Please try again.", 500
-# -------- Simple, template-free routes to make the menu work --------
-from flask import render_template_string
-from datetime import date
-
-def upsert_daily_draw(kind: str, user_id: str):
-    """Return today's draw for (user_id, kind); insert a placeholder if none exists yet."""
-    if kind not in ("rune", "tarot"):
-        raise ValueError("unknown kind")
-    today = date.today().isoformat()
-    with ENGINE.begin() as cx:
-        row = cx.exec_driver_sql("""
-            SELECT id, name, keywords
-            FROM daily_draws
-            WHERE user_id = :u AND kind = :k AND draw_date = :d
-        """, {"u": user_id, "k": kind, "d": today}).mappings().first()
-        if row:
-            return row
-        # TODO: replace with your real draw logic
-        defaults = {
-            "rune": ("Raidho", "journey, movement, change"),
-            "tarot": ("The Sun", "vitality, success, joy"),
-        }
-        name, keywords = defaults[kind]
-        did = str(uuid.uuid4())
-        cx.exec_driver_sql("""
-            INSERT INTO daily_draws (id, user_id, draw_date, kind, name, keywords)
-            VALUES (:id, :u, :d, :k, :name, :kw)
-        """, {"id": did, "u": user_id, "d": today, "k": kind, "name": name, "kw": keywords})
-        return {"id": did, "name": name, "keywords": keywords}
-
-@app.route("/logout", endpoint="logout")
-def do_logout():
-    session.clear()
-    return redirect(url_for("index"))
-
-# Accept GET *and* POST so menu clicks (GET) won’t 405/500
-@app.route("/draw/<kind>", methods=["GET", "POST"])
-def draw(kind):
-    gate = _ensure_login()
-    if gate:
-        return gate
-    try:
-        upsert_daily_draw(kind, session["user_id"])
-        return redirect(url_for("app_view"))
-    except Exception:
-        app.logger.exception("daily draw failed")
-        return "Error creating today's draw", 500
-
-# Friendly aliases used by menus
-@app.route("/daily/tarot", methods=["GET", "POST"])
-def daily_tarot():
-    return draw("tarot")
-
-@app.route("/daily/rune", methods=["GET", "POST"])
-def daily_rune():
-    return draw("rune")
-
-@app.route("/journal", methods=["GET", "POST"])
-def journal():
-    gate = _ensure_login()
-    if gate:
-        return gate
-    uid = session["user_id"]
-    if request.method == "POST":
-        # create a simple entry for today
-        with ENGINE.begin() as cx:
-            cx.exec_driver_sql(
-                "INSERT INTO daily_entries (id, user_id) VALUES (:id, :u)",
-                {"id": str(uuid.uuid4()), "u": uid},
-            )
-        return redirect(url_for("journal"))
-    # list entries
-    with ENGINE.connect() as cx:
-        rows = cx.exec_driver_sql("""
-            SELECT entry_date, created_at FROM daily_entries
-            WHERE user_id = :u
-            ORDER BY created_at DESC
-        """, {"u": uid}).mappings().all()
-    return render_template_string("""
-        <h1>Journal</h1>
-        <form method="post"><button>Add today’s entry</button></form>
-        <ul>
-        {% for r in rows %}
-          <li>{{ r.entry_date }} — {{ r.created_at }}</li>
-        {% else %}
-          <li>No entries yet.</li>
-        {% endfor %}
-        </ul>
-        <p><a href="{{ url_for('app_view') }}">Back</a></p>
-    """, rows=rows)
-
-# Global safety net so 500s show a friendly message while logs capture details
-@app.errorhandler(Exception)
-def on_error(e):
-    app.logger.exception("Unhandled exception: %s", e)
-    return "Something went wrong. Please try again.", 500
-
-
-def _bootstrap_schema():
-    # create tables if they don't exist
-    with ENGINE.begin() as cx:
-        cx.exec_driver_sql("""
-            CREATE TABLE IF NOT EXISTS questions (
-                id TEXT PRIMARY KEY,
-                user_id TEXT,
-                body TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cx.exec_driver_sql("""
-            CREATE TABLE IF NOT EXISTS answers (
-                id TEXT PRIMARY KEY,
-                question_id TEXT,
-                body TEXT NOT NULL,
-                affirmation TEXT,
-                tags_csv TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cx.exec_driver_sql("""
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-_bootstrap_schema()
-# ---- end bootstrap ----
 
 DDL = """
-CREATE TABLE IF NOT EXISTS daily_draws (
+CREATE TABLE IF NOT EXISTS tarot_pulls (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  draw_date DATE NOT NULL,
-  kind TEXT NOT NULL,
-  name TEXT,
-  keywords TEXT,
-  meaning TEXT,
-  affirmation TEXT,
+  pull_date DATE UNIQUE NOT NULL,
+  deck_name TEXT NOT NULL,
+  card_names TEXT NOT NULL,
+  interpretation TEXT NOT NULL,
+  image_url TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (user_id, kind, draw_date)
-);
-
-CREATE TABLE IF NOT EXISTS answers (
-  id TEXT PRIMARY KEY,
-  question_id TEXT,
-  body TEXT NOT NULL,
-  affirmation TEXT,
-  tags_csv TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS daily_entries (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
-  aura_color TEXT,
-  emotion TEXT,
-  keywords TEXT,
-  affirmation TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS cards (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  card_name TEXT NOT NULL,
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
-# Make Postgres-style DDL work on SQLite when needed
-DDL_SQL = (DDL
-           .replace("UUID", "TEXT")
-           .replace("TIMESTAMPTZ DEFAULT now()", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"))
-# Create tables if they don't exist (execute DDL one statement at a time)
-try:
+
+
+def _bootstrap_schema() -> None:
     with ENGINE.begin() as cx:
-        for stmt in DDL_SQL.split(";"):
-            s = stmt.strip()
-            if not s:
-                continue
-            cx.execute(text(s))
-except Exception as e:
-    print("DDL init error:", e)
+        for stmt in DDL.split(";"):
+            sql = stmt.strip()
+            if sql:
+                cx.execute(text(sql))
 
-ddl_to_run = DDL_SQL if IS_SQLITE else DDL
 
-def _ensure_login():
-    if "user_id" not in session:
-        return redirect(url_for("index"))
-    return None
+_bootstrap_schema()
 
-def _now_utc():
-    return datetime.now(timezone.utc)
 
-TAROT_FILE_MAP = {
-    "the fool":"0-the-fool.jpg","the magician":"1-the-magician.jpg","the high priestess":"2-the-high-priestess.jpg",
-    "the empress":"3-the-empress.jpg","the emperor":"4-the-emperor.jpg","the hierophant":"5-the-hierophant.jpg",
-    "the lovers":"6-the-lovers.jpg","the chariot":"7-the-chariot.jpg","strength":"8-strength.jpg",
-    "the hermit":"9-the-hermit.jpg","wheel of fortune":"10-wheel-of-fortune.jpg","justice":"11-justice.jpg",
-    "the hanged man":"12-the-hanged-man.jpg","death":"13-death.jpg","temperance":"14-temperance.jpg",
-    "the devil":"15-the-devil.jpg","the tower":"16-the-tower.jpg","the star":"17-the-star.jpg",
-    "the moon":"18-the-moon.jpg","the sun":"19-the-sun.jpg","judgement":"20-judgement.jpg","the world":"21-the-world.jpg",
-}
-RUNE_FILE_MAP = {
-    "fehu":"fehu.svg","uruz":"uruz.svg","thurisaz":"thurisaz.svg","ansuz":"ansuz.svg","raidho":"raidho.svg",
-    "kenaz":"kenaz.svg","gebo":"gebo.svg","wunjo":"wunjo.svg","hagalaz":"hagalaz.svg","nauthiz":"nauthiz.svg",
-    "isa":"isa.svg","jera":"jera.svg","eihwaz":"eihwaz.svg","perthro":"perthro.svg","algiz":"algiz.svg",
-    "sowilo":"sowilo.svg","tiwaz":"tiwaz.svg","berkano":"berkano.svg","ehwaz":"ehwaz.svg","mannaz":"mannaz.svg",
-    "laguz":"laguz.svg","ingwaz":"ingwaz.svg","othala":"othala.svg","dagaz":"dagaz.svg",
-}
-def tarot_image_url(name: Optional[str]):
-    if not name: return None
-    key = " ".join(name.split()).lower()
-    f = TAROT_FILE_MAP.get(key)
-    return url_for("static", filename=f"cards/tarot/{f}") if f else None
-def rune_image_url(name: Optional[str]):
-    if not name: return None
-    key = " ".join(name.split()).lower()
-    f = RUNE_FILE_MAP.get(key)
-    return url_for("static", filename=f"cards/runes/{f}") if f else None
+@dataclass
+class TarotPull:
+    pull_date: str
+    deck_name: str
+    card_names: str
+    interpretation: str
+    image_url: str | None
 
-def ai_oracle_response(question:str):
-    api_key = os.environ.get("OPENAI_API_KEY")
-    return (
-  "Today's energy suggests gentle clarity. Name two hopes and one boundary. Trust your pacing.",
-  "I am calmly guided",
-  "clarity, pacing, trust",
-)
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-    system = ("You are Miss Amara, a compassionate tarot guide. Offer grounded, kind insights in plain language. "
-              "Use metaphor sparingly. Never give medical/legal/financial advice. Encourage reflection and free will. "
-              "At the top include an optional line 'Primary Card: <Name>' if one fits. "
-              "End with one concise affirmation beginning with 'I am…' and 3 lowercase tags (comma-separated).")
-    user = f"Question: {question}\nRespond in 3–5 short paragraphs, then provide an affirmation and tags."
+
+@dataclass
+class AdminFormState:
+    data: TarotPull
+    errors: dict
+
+
+def _today_eastern() -> date:
+    return datetime.now(EASTERN_TZ).date()
+
+
+def _parse_date(date_str: str) -> date | None:
     try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role":"system","content":system},{"role":"user","content":user}],
-            temperature=0.8
-        )
-        full = resp.choices[0].message.content.strip()
-        affirmation = "I am centered and guided."
-        tags = "reflection, guidance, calm"
-        return (full, affirmation, tags)
-    except Exception:
-        return ("The oracle is quiet for a moment—please try again shortly.", "I am patient with the process.","retry, patience, process")
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
-def ai_aura():
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return {"aura_color":"lavender","emotion":"calm, receptive",
-                "keywords":"intuition, stillness, trust",
-                "affirmation":"I am gently aligned with my inner knowing."}
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-    system=("You are Miss Amara. Create a daily aura with aura_color (CSS color words), emotion (few words), "
-            "keywords (3–5, comma-separated), affirmation (starts with 'I am'). Return four labeled lines.")
-    user="Generate today's aura."
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"system","content":system},{"role":"user","content":user}],
-        temperature=0.8
+
+def _get_pull_by_date(pull_date: date) -> TarotPull | None:
+    with ENGINE.connect() as cx:
+        row = cx.execute(
+            text(
+                """
+                SELECT pull_date, deck_name, card_names, interpretation, image_url
+                FROM tarot_pulls
+                WHERE pull_date = :pull_date
+                """
+            ),
+            {"pull_date": pull_date.isoformat()},
+        ).mappings().first()
+    if not row:
+        return None
+    return TarotPull(
+        pull_date=row["pull_date"],
+        deck_name=row["deck_name"],
+        card_names=row["card_names"],
+        interpretation=row["interpretation"],
+        image_url=row["image_url"],
     )
-    out = resp.choices[0].message.content.strip()
-    def grab(lbl):
-        m = re.search(f"{re.escape(lbl)}:\\s+(.*)", out, re.I)
-        return (m.group(1).strip() if m else "")
-    return {"aura_color":grab("aura_color|Color|Aura Color"),
-            "emotion":grab("emotion|Mood|Emotion"),
-            "keywords":grab("keywords"),
-            "affirmation":grab("affirmation") or "I am centered and guided."}
 
-def ai_draw(kind:str, name_hint: Optional[str]):
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        if kind=="tarot":
-            return {"name":name_hint or "The High Priestess","keywords":"intuition, stillness, inner voice",
-                    "meaning":"Quiet your mind; answers arrive when you stop chasing.",
-                    "affirmation":"I am guided by calm inner knowing."}
-        else:
-            return {"name":name_hint or "Fehu","keywords":"beginnings, resources, flow",
-                    "meaning":"Nurture what's already in your hands and let momentum grow.",
-                    "affirmation":"I am a steward of growing gifts."}
-    from openai import OpenAI
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-try:
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=0.7,
-        max_tokens=120,
-    )
-    ritual = resp.choices[0].message.content.strip()
-except Exception:
-    ritual = "Breathe slowly for two minutes and release one worry on the exhale."
-
-@app.route("/")
-def index():
-    with ENGINE.begin() as cx:
-        c = cx.execute(text("SELECT COUNT(*) FROM users")).scalar()
-    return render_template("index.html", signup_count=c)
-@app.route("/signup", methods=["POST"])
-def signup():
-    email = (request.form.get("email") or "").strip().lower()
-    if not email or "@" not in email:
-        return redirect(url_for("index"))
-
-    # Create-or-get user in DB so session maps to a real user
-    with ENGINE.begin() as cx:
-        try:
-            uid = str(uuid.uuid4())
-            cx.exec_driver_sql(
-                "INSERT INTO users (id, email) VALUES (:id, :email)",
-                {"id": uid, "email": email},
+def _list_pulls() -> list[TarotPull]:
+    with ENGINE.connect() as cx:
+        rows = cx.execute(
+            text(
+                """
+                SELECT pull_date, deck_name, card_names, interpretation, image_url
+                FROM tarot_pulls
+                ORDER BY pull_date DESC
+                """
             )
-        except IntegrityError:
-            uid = cx.exec_driver_sql(
-                "SELECT id FROM users WHERE email = :email",
-                {"email": email},
-            ).scalar_one_or_none()
-            if uid is None:
-                return "Could not find or create user", 500
-
-    session["email"] = email
-    session["user_id"] = uid
-    return redirect(url_for("app_view"))
-
-@app.route("/healthz")
-def healthz():
-    # Reuse the same DB check as /readyz
-    return readyz()
-
-
-@app.route("/app")
-def app_view():
-  gate = _ensure_login()
-  if gate:
-
-    uid = session["user_id"]
-
-  with ENGINE.begin() as cx:
-    # Recent rune draws (10)
-    sql_rune_histt = (
-      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
-      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
-    )
-    rune_histt = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
-
-    # Recent questions + answers (20)
-    sql_rows = (
-      "SELECT q.created_at, a.body, a.affirmation, a.tags_csv "
-      "FROM questions q "
-      "LEFT JOIN answers a ON a.question_id = q.id "
-      "WHERE q.user_id = :u "
-      "ORDER BY q.created_at DESC "
-      "LIMIT 20"
-    )
-    rows = cx.execute(text(sql_rows), {"u": uid}).mappings().all()
-
-    # Last question time
-    sql_last = (
-      "SELECT created_at "
-      "FROM questions "
-      "WHERE user_id = :u "
-      "ORDER BY created_at DESC "
-      "LIMIT 1"
-    )
-    last = cx.execute(text(sql_last), {"u": uid}).scalar()
-
-  return render_template("app.html", rows=rows, last=last, rune_histt=rune_hist)
-
-
-
-@app.route("/daily")
-def daily_view():
-  gate = _ensure_login()
-  if gate: return gate
-
-  uid = session["user_id"]
-
-  with ENGINE.begin() as cx:
-    # Today's entry (if any)
-    sql_today = (
-      "SELECT aura_color, emotion, keywords, affirmation, created_at "
-      "FROM daily_entries WHERE user_id=:u AND entry_date=CURRENT_DATE"
-    )
-    today = cx.execute(text(sql_today), {"u": uid}).mappings().first()
-
-    # Recent 14 days of entries
-    sql_hist = (
-      "SELECT aura_color, emotion, keywords, affirmation, created_at, entry_date "
-      "FROM daily_entries WHERE user_id=:u ORDER BY entry_date DESC LIMIT 14"
-    )
-    hist = cx.execute(text(sql_hist), {"u": uid}).mappings().all()
-
-    # Recent rune draws (optional)
-    sql_rune_hist = (
-      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
-      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
-    )
-    rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
-
-  return render_template("daily.html", today=today, hist=hist, rune_hist=rune_hist)
-@app.route("/daily/generate", methods=["POST"])
-def daily_generate():
-  gate = _ensure_login()
-  if gate: return gate
-
-  uid = session["user_id"]
-  data = ai_aura()  # returns aura_color, emotion, keywords, affirmation
-
-  # Upsert today's daily entry
-  with ENGINE.begin() as cx:
-    sql = (
-      "INSERT INTO daily_entries (id, user_id, entry_date, aura_color, emotion, keywords, affirmation) "
-      "VALUES (:id, :u, CURRENT_DATE, :c, :e, :k, :a) "
-      "ON CONFLICT (user_id, entry_date) DO UPDATE SET "
-      "aura_color = :c, emotion = :e, keywords = :k, affirmation = :a, created_at = now()"
-    )
-    cx.execute(
-      text(sql),
-      {
-        "id": str(uuid.uuid4()),
-        "u": uid,
-        "c": data["aura_color"],
-        "e": data["emotion"],
-        "k": data["keywords"],
-        "a": data["affirmation"],
-      },
-    )
-
-  # (Optional) recent rune history to show client
-  with ENGINE.begin() as cx:
-    sql_rune_hist = (
-      "SELECT name, keywords, created_at, draw_date FROM daily_draws "
-      "WHERE user_id=:u AND kind='rune' ORDER BY draw_date DESC LIMIT 10"
-    )
-    rune_hist = cx.execute(text(sql_rune_hist), {"u": uid}).mappings().all()
-
-  return jsonify({"ok": True, "aura": data, "rune_hist": rune_hist})
-
-@app.route("/ask", methods=["POST"])
-def ask():
-    # --- Auth gate (dev bypass) ---
-    if AUTH_BYPASS:
-        if "user_id" not in session:
-            session["user_id"] = str(uuid.uuid4())
-    else:
-        gate = _ensure_login()
-        if gate:
-            return gate
-
-    uid = session["user_id"]
-    data = request.get_json() or {}
-    q = (data.get("question") or "").strip()
-    if not q:
-        return jsonify({"ok": False, "error": "empty_question"}), 400
-
-    # --- Rate limit (24h when enabled) ---
-    with ENGINE.begin() as cx:
-        last = cx.execute(
-            text("SELECT created_at FROM questions WHERE user_id=:u ORDER BY created_at DESC LIMIT 1"),
-            {"u": uid}
-        ).scalar()
-    if ENFORCE_RATE_LIMIT and last and (_now_utc() - last) < timedelta(hours=24):
-        return jsonify({"ok": False, "error": "rate_limited"}), 429
-
-    # Create the question id
-    qid = str(uuid.uuid4())
-
-
-
-
-    # --- Generate answer ---
-    try:
-        body, aff, tags_csv = ai_oracle_response(q)
-        tags = tags_csv  # keep 'tags' name for compatibility
-    except Exception:
-        body, aff, tags = (
-            "Sorry, I couldn't think of a reply just now.",
-            "I am calm and grounded.",
-            [],
+        ).mappings().all()
+    return [
+        TarotPull(
+            pull_date=row["pull_date"],
+            deck_name=row["deck_name"],
+            card_names=row["card_names"],
+            interpretation=row["interpretation"],
+            image_url=row["image_url"],
         )
+        for row in rows
+    ]
 
-    # Normalize tags -> list[str]
-    if not tags:
-        tags = []
-    elif isinstance(tags, str):
-        tags = [t.strip() for t in tags.split(",") if t.strip()]
-    tags_csv = ",".join(tags)
 
-    now = _now_utc()
-
-    # Store the question & answer
+def _save_pull(pull: TarotPull) -> None:
     with ENGINE.begin() as cx:
         cx.execute(
-            text("""
-                INSERT INTO questions (id, user_id, body, created_at)
-                VALUES (:id, :uid, :body, :created_at)
-            """),
-            {"id": qid, "uid": uid, "body": q, "created_at": now},
-        )
-        cx.execute(
-            text("""
-                INSERT INTO answers (id, question_id, body, affirmation, tags_csv, created_at)
-                VALUES (:id, :qid, :body, :aff, :tags_csv, :created_at)
-            """),
+            text(
+                """
+                INSERT INTO tarot_pulls (
+                    id, pull_date, deck_name, card_names, interpretation, image_url
+                )
+                VALUES (
+                    :id, :pull_date, :deck_name, :card_names, :interpretation, :image_url
+                )
+                ON CONFLICT(pull_date) DO UPDATE SET
+                    deck_name = excluded.deck_name,
+                    card_names = excluded.card_names,
+                    interpretation = excluded.interpretation,
+                    image_url = excluded.image_url,
+                    updated_at = CURRENT_TIMESTAMP
+                """
+            ),
             {
                 "id": str(uuid.uuid4()),
-                "qid": qid,
-                "body": body,
-                "aff": aff,
-                "tags_csv": tags_csv,
-                "created_at": now,
+                "pull_date": pull.pull_date,
+                "deck_name": pull.deck_name,
+                "card_names": pull.card_names,
+                "interpretation": pull.interpretation,
+                "image_url": pull.image_url,
             },
         )
 
-    return jsonify({"ok": True, "question_id": qid, "body": body, "affirmation": aff, "tags": tags})
+
+@app.route("/")
+def home():
+    today = _today_eastern()
+    pull = _get_pull_by_date(today)
+    return render_template(
+        "home.html",
+        today=today.isoformat(),
+        pull=pull,
+    )
+
+
+@app.route("/archive")
+def archive():
+    pulls = _list_pulls()
+    return render_template("archive.html", pulls=pulls)
+
+
+@app.route("/pull/<pull_date>")
+def pull_detail(pull_date: str):
+    parsed = _parse_date(pull_date)
+    if not parsed:
+        abort(404)
+    pull = _get_pull_by_date(parsed)
+    if not pull:
+        return render_template("pull_detail.html", pull_date=pull_date, pull=None), 404
+    return render_template("pull_detail.html", pull_date=pull_date, pull=pull)
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
+def _admin_password() -> str | None:
+    return os.environ.get("ADMIN_PASSWORD")
+
+
+def _admin_logged_in() -> bool:
+    return session.get("admin_authenticated", False)
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    admin_password = _admin_password()
+    if not admin_password:
+        return render_template("admin_missing_password.html"), 500
+
+    if not _admin_logged_in():
+        if request.method == "POST":
+            password = (request.form.get("password") or "").strip()
+            if password == admin_password:
+                session["admin_authenticated"] = True
+                flash("Welcome back. You can edit pulls below.", "success")
+                return redirect(url_for("admin"))
+            flash("Incorrect password. Please try again.", "error")
+        return render_template("admin_login.html")
+
+    today = _today_eastern().isoformat()
+    selected_date = request.args.get("date") or today
+    existing_pull = _get_pull_by_date(_parse_date(selected_date)) if _parse_date(selected_date) else None
+
+    form_data = TarotPull(
+        pull_date=selected_date,
+        deck_name=existing_pull.deck_name if existing_pull else "",
+        card_names=existing_pull.card_names if existing_pull else "",
+        interpretation=existing_pull.interpretation if existing_pull else "",
+        image_url=existing_pull.image_url if existing_pull else "",
+    )
+    errors: dict[str, str] = {}
+
+    if request.method == "POST":
+        form_data = TarotPull(
+            pull_date=(request.form.get("pull_date") or today).strip(),
+            deck_name=(request.form.get("deck_name") or "").strip(),
+            card_names=(request.form.get("card_names") or "").strip(),
+            interpretation=(request.form.get("interpretation") or "").strip(),
+            image_url=(request.form.get("image_url") or "").strip() or None,
+        )
+
+        if not _parse_date(form_data.pull_date):
+            errors["pull_date"] = "Use YYYY-MM-DD format."
+        if not form_data.deck_name:
+            errors["deck_name"] = "Deck name is required."
+        if not form_data.card_names:
+            errors["card_names"] = "Card name(s) are required."
+        if not form_data.interpretation:
+            errors["interpretation"] = "Interpretation is required."
+
+        if not errors:
+            _save_pull(form_data)
+            flash("Pull saved successfully.", "success")
+            return redirect(url_for("admin", date=form_data.pull_date))
+
+    pulls = _list_pulls()
+    return render_template(
+        "admin.html",
+        form=AdminFormState(data=form_data, errors=errors),
+        pulls=pulls,
+    )
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin_authenticated", None)
+    flash("You are now logged out.", "info")
+    return redirect(url_for("admin"))
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    return render_template("404.html"), 404
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
