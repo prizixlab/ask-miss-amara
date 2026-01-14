@@ -2,13 +2,13 @@
 {% set title = "Tarot Archive" %}
 
 {% block content %}
-  <section>
+  <section class="page-intro">
     <h1>Archive</h1>
     <p>Browse past pulls (most recent first).</p>
   </section>
 
   {% if pulls %}
-    <ul>
+    <ul class="link-list">
       {% for pull in pulls %}
         <li>
           <a href="{{ url_for('pull_detail', pull_date=pull.pull_date) }}">
@@ -18,7 +18,7 @@
       {% endfor %}
     </ul>
   {% else %}
-    <article>
+    <article class="card">
       <p>No pulls yet. Once an admin saves a pull, it will appear here.</p>
     </article>
   {% endif %}
