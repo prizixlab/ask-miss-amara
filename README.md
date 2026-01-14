@@ -1,39 +1,53 @@
-# Ms. Amara Tarot MVP
+# Miss Amara — Tarot MVP
 
-## Stack
-- **Backend:** Flask
-- **Database:** SQLAlchemy with SQLite by default (`app.db`), Postgres via `DATABASE_URL`
-- **Templates:** Jinja2
-- **Styling:** Plain CSS in `static/style.css`
+A calm, minimalist tarot website for daily reflections.
 
 ## Local development
 1. Create a virtual environment and install dependencies:
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
 
-2. Set environment variables (copy `.env.example` and export them in your shell):
+2. Set required environment variables:
 
-```bash
-cp .env.example .env
-export $(grep -v '^#' .env | xargs)
-```
+   ```bash
+   export SESSION_SECRET="replace-me"
+   export ADMIN_PASSWORD="replace-me"
+   ```
 
 3. Run the app:
 
-```bash
-python app.py
-```
+   ```bash
+   python app.py
+   ```
 
 4. Visit `http://127.0.0.1:5000`.
 
-## Admin workflow
-- Navigate to `/admin` and enter `ADMIN_PASSWORD`.
+## Admin access
+- Visit `/admin` and enter the `ADMIN_PASSWORD` you set.
 - Create or edit tarot pulls by date (YYYY-MM-DD).
-- The home page shows today's pull using America/New_York time.
+- The home page displays today's pull using America/New_York time, or the most recent pull if today's is not yet available.
 
-## Production
-Set `DATABASE_URL` to a Postgres connection string and configure `SESSION_SECRET` + `ADMIN_PASSWORD`.
+## Deploy later (production)
+1. Provide a persistent database and set `DATABASE_URL` to a Postgres connection string.
+2. Set secure secrets:
+
+   ```bash
+   export SESSION_SECRET="strong-random-value"
+   export ADMIN_PASSWORD="strong-random-value"
+   ```
+
+3. Run with Gunicorn:
+
+   ```bash
+   gunicorn --bind 0.0.0.0:8000 app:app
+   ```
+
+4. Put a reverse proxy (NGINX, Render, Fly.io, etc.) in front to handle HTTPS.
+
+## Notes
+- No user accounts or payments are included.
+- Images are optional and linked via URL in the admin form.

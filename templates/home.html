@@ -1,17 +1,27 @@
 {% extends "base.html" %}
-{% set title = "Today's Tarot Pull" %}
+{% set title = "Daily Tarot Pull" %}
 
 {% block content %}
-  <section>
-    <h1>Today's Tarot Pull</h1>
-    <p>America/New_York date: {{ today }}</p>
+  <section class="hero">
+    <p class="eyebrow">Daily reading</p>
+    <h1>Today's tarot, shared with care</h1>
+    <p class="lede">
+      A quiet place to return each day for clarity, comfort, and a small ritual of
+      reflection.
+    </p>
+    <p class="subtle">Today in America/New_York: {{ today }}</p>
   </section>
 
   {% if pull %}
-    <article>
+    <article class="card">
+      {% if is_today %}
+        <p class="chip">Today's pull</p>
+      {% else %}
+        <p class="chip">Latest pull · {{ pull.pull_date }}</p>
+      {% endif %}
       <h2>{{ pull.deck_name }}</h2>
       <h3>{{ pull.card_names }}</h3>
-      <p>{{ pull.interpretation }}</p>
+      <p class="interpretation">{{ pull.interpretation }}</p>
       {% if pull.image_url %}
         <img src="{{ pull.image_url }}" alt="Tarot card image" />
       {% endif %}
@@ -19,12 +29,15 @@
         <a href="{{ url_for('pull_detail', pull_date=pull.pull_date) }}">Read full pull</a>
       </p>
     </article>
-  {% else %}
-    <article>
-      <p>No pull has been saved for today yet.</p>
-      <p>
-        <a href="{{ url_for('admin') }}">Add today's pull</a> to share it with visitors.
+    {% if not is_today %}
+      <p class="subtle note">
+        A new pull will appear after it is saved for today.
       </p>
+    {% endif %}
+  {% else %}
+    <article class="card">
+      <p>No pull has been saved yet.</p>
+      <p>Once the daily reading is set, it will appear here for everyone to enjoy.</p>
     </article>
   {% endif %}
 {% endblock %}

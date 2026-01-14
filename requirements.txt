@@ -1,6 +1,4 @@
 Flask
 SQLAlchemy
 psycopg2-binary
-requests
-openai>=1.0.0
 gunicorn==23.0.0

@@ -126,6 +126,29 @@ def _list_pulls() -> list[TarotPull]:
     ]
 
 
+def _get_latest_pull() -> TarotPull | None:
+    with ENGINE.connect() as cx:
+        row = cx.execute(
+            text(
+                """
+                SELECT pull_date, deck_name, card_names, interpretation, image_url
+                FROM tarot_pulls
+                ORDER BY pull_date DESC
+                LIMIT 1
+                """
+            )
+        ).mappings().first()
+    if not row:
+        return None
+    return TarotPull(
+        pull_date=row["pull_date"],
+        deck_name=row["deck_name"],
+        card_names=row["card_names"],
+        interpretation=row["interpretation"],
+        image_url=row["image_url"],
+    )
+
+
 def _save_pull(pull: TarotPull) -> None:
     with ENGINE.begin() as cx:
         cx.execute(
@@ -160,10 +183,15 @@ def _save_pull(pull: TarotPull) -> None:
 def home():
     today = _today_eastern()
     pull = _get_pull_by_date(today)
+    is_today = True
+    if not pull:
+        pull = _get_latest_pull()
+        is_today = False if pull else True
     return render_template(
         "home.html",
         today=today.isoformat(),
         pull=pull,
+        is_today=is_today,
     )
 
 
@@ -270,4 +298,4 @@ def not_found(_error):
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=os.environ.get("FLASK_DEBUG") == "1")
